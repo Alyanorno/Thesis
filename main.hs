@@ -1,9 +1,11 @@
-
-
-
+import Prelude hiding (id)
+import Data.List (partition, find)
+import Data.Maybe (isNothing)
+import Data.Function (fix)
 
 type ID = Int
-data Person = Person { id :: ID } deriving (Show)
+data Gender = Male | Female deriving (Show, Eq)
+data Person = Person { id :: ID, age :: Int, gender :: Gender } deriving (Show)
 type People = [Person]
 
 data Connection = Parrent | Sibling | Lover deriving (Show, Eq)
@@ -29,45 +31,56 @@ type Relations = [Relation]
 
 
 birth :: (People,Relations) -> (People,Relations)
-birth a = (fst r, snd latest ++ snd r)
+birth lists = (fst r, snd lists ++ snd r)
 	where 
 		r = foldr1 (\a b -> (fst a ++ fst b, snd a ++ snd b)) $ map f lovers
 			where
+				f :: Relation -> (People, Relations)
 				f l = (p, c)
-				p = [Person i | i <- [0..3]] -- TODO: Must change to proper id
-				c = parrents ++ siblings
-				parrents = [[Relation Parrent ((id c), (id p)) | c <- p] | p <- [fst l, snd l]]
-				siblings = foo p
-					where foo s
-						| length s > 1 = [Relation Sibling (id (head s)) c | c <- (tail s)] ++ foo (tail s)
-						| otherwise = []
-		latest = (last a)
-		lovers = filter ((==Lover).connection) (snd latest)
+					where
+						p = [Person i 0 g | (i,g) <- zip [0..3] (cycle [Male, Female])] -- TODO: Must change to proper id
+						c = parrents ++ siblings
+						parrents = concat [[Relation Parrent (c, t) | c <- map id p] | t <- [fst (persons l), snd (persons l)]]
+						siblings = foo p
+							where 
+								foo :: People -> Relations
+								foo s
+									| length s > 1 = [Relation Sibling ((id (head s)), (id c)) | c <- tail s] ++ foo (tail s)
+									| otherwise = []
+		lovers = filter ((==Lover).connection) (snd lists)
 
 
-death :: [(People,Relations)] -> [(People,Relations)]
-death a = a
+death :: (People,Relations) -> (People,Relations)
+death lists = (p, r)
+	where
+		(p, dead) = partition ((<60).age) (fst lists)
+		r = filter f (snd lists)
+		f a | isNothing found = False | otherwise = True
+			where found = find (\d -> fst (persons a) == d || snd (persons a) == d) (map id dead)
 
 
-change :: [(People,Relations)] -> [(People,Relations)]
-change a = a
+change :: (People,Relations) -> (People,Relations)
+change a = (p, r)
+	where
+		p = map (\a -> Person (id a) (age a + 10) (gender a)) p
+		r = (snd a) -- TODO: Complete
 
 
 
 generations :: [(People,Relations)] -> [(People,Relations)]
-generations first = first ++ [(birth.death.change) (((take 2).(drop i)) generations) | i <- [0..]]
+generations first = first ++ fix (\f -> [(birth.death.change) ((head.(drop i)) f) | i <- [0..]])
 
 
 
 
 
-start :: Int -> Int -> [People]
-start a b = [[Person i + l | i <- [0..b]] | l <- [0..a]]
+start :: Int -> People
+start a = [Person i 20 g | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
 
 
 main = do
 	n <- getLine
-	putStrLn $ show $ fst $ generations (start 1 5) !! read n
+	putStrLn $ show $ fst $ generations [(start 5, [])] !! read n
 	main
 
 
