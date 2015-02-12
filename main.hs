@@ -1,18 +1,23 @@
 import Prelude hiding (id)
-import Data.List (partition, find)
+
+import Data.Map (Map)
+import qualified Data.Map as Map
+import Data.List (partition, find, sort)
 import Data.Maybe (isNothing)
 import Data.Function (fix)
+
 
 type ID = Int
 data Gender = Male | Female deriving (Show, Eq)
 data Person = Person { id :: ID, age :: Int, gender :: Gender } deriving (Show)
 type People = [Person]
 
-data Connection = Parrent | Sibling | Lover deriving (Show, Eq)
-data Relation = Relation { connection :: Connection, persons :: (ID, ID) } deriving (Show)
+data Connection = Parrent | Sibling | Lover deriving (Show, Eq, Ord)
+data Relation = Relation { connection :: Connection, persons :: (ID, ID) } deriving (Show, Eq)
 type Relations = [Relation]
 
-
+instance Ord Relation where
+	compare r1 r2 = compare (fst (persons r1), snd (persons r1), connection r1) (fst (persons r2), snd (persons r2), connection r2)
 
 -- List of people
 -- Connections between people
@@ -59,12 +64,30 @@ death lists = (p, r)
 			where found = find (\d -> fst (persons a) == d || snd (persons a) == d) (map id dead)
 
 
-change :: (People,Relations) -> (People,Relations)
-change a = (p, r)
-	where
-		p = map (\a -> Person (id a) (age a + 10) (gender a)) p
-		r = (snd a) -- TODO: Complete
+mapTuple f (a1, a2) = (f a1, f a2)
 
+change :: (People,Relations) -> (People,Relations)
+change lists = (p, r)
+	where
+		p :: People
+		p = map (\a -> Person (id a) (age a + 10) (gender a)) (fst lists)
+
+		r :: Relations
+		r = map fst $ joinProbability new base -- TODO: Do the probability
+
+		joinProbability :: (Num a) => [(Relation, a)] -> [(Relation, a)] -> [(Relation, a)]
+		joinProbability a b
+			| length a == 0 = b
+			| length b == 0 = a
+
+			| x == y = (fst (head a), snd (head a) * snd (head b)) : joinProbability (tail a) (tail b)
+			| x > y = joinProbability a (tail b)
+			| x < y = joinProbability (tail a) b
+			where (x, y) = mapTuple (fst.head) (a, b)
+
+
+		new = zip (sort (snd lists)) (cycle [0.5]) -- TOOD: Complete
+		base = zip (snd lists) (cycle [0.5])
 
 
 generations :: [(People,Relations)] -> [(People,Relations)]
