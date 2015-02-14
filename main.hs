@@ -48,6 +48,7 @@ mapTuple f (a1, a2) = (f a1, f a2)
 
 
 birth :: (People,Relations) -> (People,Relations)
+birth (a, []) = (a, [])
 birth (people, relations) = (fst r, relations ++ snd r)
 	where 
 		r = foldr1 (\a b -> (fst a ++ fst b, snd a ++ snd b)) $ map f lovers
@@ -68,7 +69,7 @@ birth (people, relations) = (fst r, relations ++ snd r)
 
 
 randomRsg :: (RandomGen g, Random a) => Int -> (a, a) -> g -> ([a], g)
-randomRsg antal range gen = (take antal $ randomRs range gen, snd $ next gen)
+randomRsg antal range gen = (take antal $ randomRs range gen, snd $ split gen)
 
 
 death :: (People,Relations) -> (People,Relations)
@@ -81,6 +82,7 @@ death (people, relations) = (p, r)
 
 
 change :: StdGen -> (People,Relations) -> (People,Relations)
+change _ ([], _) = ([], [])
 change randGen (people, relations) = (p, r)
 	where
 		p :: People
@@ -101,8 +103,10 @@ change randGen (people, relations) = (p, r)
 
 				person = head people
 
-				potential = [i | i <- map (people !!) t, gender i /= gender person]
-				(t, gen') = randomRsg 5 (0, length people) gen :: ([Int], StdGen)
+				potential
+					| length t < 1 = []
+					| otherwise = [i | i <- map (people !!) t, gender i /= gender person]
+				(t, gen') = randomRsg 5 (0, length people - 1) gen :: ([Int], StdGen)
 
 
 		lovers :: Relations
@@ -115,11 +119,11 @@ change randGen (people, relations) = (p, r)
 		free = filter (\p -> isNothing $ find (\r -> anyTuple (==id p) $ persons r) remain) people
 
 
-generations :: Int -> [(People,Relations)] -> [(People,Relations)]
-generations seed first = first ++ fix (\f -> [(birth.death.(change (mkStdGen (xor seed i)))) ((head.(drop i)) f) | i <- [0..]])
+--generations :: Int -> (People,Relations) -> [(People,Relations)]
+--generations seed first = first ++ fix (\f -> [(birth.death.(change (mkStdGen (xor seed i)))) ((head.(drop i)) f) | i <- [0..]])
 
-
-
+generations :: Int -> Int -> (People,Relations) -> [(People,Relations)]
+generations seed i first = first : (generations seed (i+1) $ (birth.death.(change $ mkStdGen $ xor seed i)) first)
 
 
 start :: Int -> People
@@ -130,7 +134,7 @@ seed = 0
 
 main = do
 	n <- getLine
-	putStrLn $ show $ fst $ generations seed [(start 5, [])] !! read n
+	putStrLn $ show $ length $ fst $ (generations seed 0 (start 5, [])) !! read n
 	main
 
 
