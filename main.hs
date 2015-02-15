@@ -3,6 +3,7 @@ import Prelude hiding (id)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List
+import Data.List.Split (chunksOf)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor)
@@ -47,16 +48,16 @@ mapTuple f (a1, a2) = (f a1, f a2)
 -- Check for pair and birth probability and add new people
 
 
-birth :: (People,Relations) -> (People,Relations)
-birth (a, []) = (a, [])
-birth (people, relations) = (fst r, relations ++ snd r)
+birth :: Int -> (People,Relations) -> (People,Relations)
+birth _ (a, []) = (a, [])
+birth iteration (people, relations) = (people ++ fst r, relations ++ snd r)
 	where 
-		r = foldr1 (\a b -> (fst a ++ fst b, snd a ++ snd b)) $ map f lovers
+		r = foldr1 (\a b -> (fst a ++ fst b, snd a ++ snd b)) $ map f $ zip lovers $ chunksOf 3 [(mod iteration 100)*10000..]
 			where
-				f :: Relation -> (People, Relations)
-				f l = (p, c)
+				f :: (Relation, [Int]) -> (People, Relations)
+				f (l, ids) = (p, c)
 					where 
-						p = [Person i 0 g | (i,g) <- zip [0..3] (cycle [Male, Female])] -- TODO: Must change to proper id
+						p = [Person i 0 g | (i,g) <- zip ids (cycle [Male, Female])] -- TODO: Must change to proper id
 						c = parrents ++ siblings
 						parrents = concat [[Relation Parrent (c, t) | c <- map id p] | t <- [fst (persons l), snd (persons l)]]
 						siblings = foo p
@@ -76,8 +77,10 @@ death :: (People,Relations) -> (People,Relations)
 death (people, relations) = (p, r)
 	where
 		(p, dead) = partition ((<60).age) people
-		r = filter f relations
-		f a = isJust $ find (\d -> anyTuple (==d) $ persons a) $ map id dead
+		r = filter (f dead) relations
+			where
+				f :: People -> Relation -> Bool
+				f dead a = isNothing $ find (\d -> anyTuple (d==) $ persons a) $ map id dead
 
 
 
@@ -89,7 +92,7 @@ change randGen (people, relations) = (p, r)
 		p = map (\a -> Person (id a) (age a + 10) (gender a)) people
 
 		r :: Relations
-		r = remain ++ new
+		r = other ++ remain ++ new
 
 		new = f free randGen
 
@@ -110,7 +113,8 @@ change randGen (people, relations) = (p, r)
 
 
 		lovers :: Relations
-		lovers = filter ((==Lover).connection) relations
+		other :: Relations
+		(lovers, other) = partition ((==Lover).connection) relations
 
 		remain :: Relations
 		remain = map fst $ filter ((>0.1).snd) $ zip lovers (randomRs (0.0, 1.0) randGen :: [Float])
@@ -123,7 +127,7 @@ change randGen (people, relations) = (p, r)
 --generations seed first = first ++ fix (\f -> [(birth.death.(change (mkStdGen (xor seed i)))) ((head.(drop i)) f) | i <- [0..]])
 
 generations :: Int -> Int -> (People,Relations) -> [(People,Relations)]
-generations seed i first = first : (generations seed (i+1) $ (birth.death.(change $ mkStdGen $ xor seed i)) first)
+generations seed i first = first : (generations seed (i+1) $ ((birth i).death.(change $ mkStdGen $ xor seed i)) first)
 
 
 start :: Int -> People
@@ -134,7 +138,13 @@ seed = 0
 
 main = do
 	n <- getLine
-	putStrLn $ show $ length $ fst $ (generations seed 0 (start 5, [])) !! read n
+	putStrLn ""
+	print $ length $ fst $ (generations seed 0 (start 5, [])) !! read n
+	print $ map age $ fst $ (generations seed 0 (start 5, [])) !! read n
+	print $ length $ filter ((==Lover).connection) $ snd $ (generations seed 0 (start 5, [])) !! read n
+	print $ length $ filter ((==Sibling).connection) $ snd $ (generations seed 0 (start 5, [])) !! read n
+	print $ length $ snd $ (generations seed 0 (start 5, [])) !! read n
+	putStrLn "---------------------"
 	main
 
 
