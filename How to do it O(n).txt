@@ -1,7 +1,8 @@
 birth O(n) (only females have babies)
 death O(n) dangling ids (do not remove relations to dead people)
-change O(n+k)
-	relationships O(n+k)
-		non-exclusive O(n+k) bucket sort + fixed size random sampling
-		exclusive O(n+k) bucket sort + fixed size random sampling + id lookup of sorted list (for partner) (do not add probabilities, otherwise O(n+log(n)))
+change O(n)
+	relationships O(n)
+		non-exclusive O(n) buckets + fixed size random sampling
+		exclusive O(n) buckets + fixed size random sampling + id lookup of sorted list (for partner) (do not add probabilities, otherwise O(n+log(n)))
 	metarelationships O(log(n)) statistical sampling with fixed max number O(1) + id lookup of sorted list O(log(n))
+
