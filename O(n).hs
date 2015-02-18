@@ -1,10 +1,17 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving, CPP #-}
+
 import Prelude hiding (id)
 
-import Data.List
+
+import Data.Vector ((!), fromList, toList, Vector)
+import qualified Data.Vector as V (length, map, filter, zip, zipWith, zipWith3)
 import Data.List.Split (chunksOf)
+import qualified Data.List as L (length, map, filter, zip, zipWith)
+
+import Data.Int (Int64)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
-import Data.Bits (xor)
+import Data.Bits (xor, shiftL, shiftR)
 import System.Random
 
 
@@ -18,10 +25,35 @@ type ID = Int
 data Gender = Male | Female deriving (Show, Eq)
 data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq)
 data Person = Person { id :: ID, age :: Int, gender :: Gender, proffesion :: Proffesion, relations :: Relations } deriving (Show)
-type People = [Person]
+type People = Vector Person
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
+
+
+
+
+newtype Xorshift = Xorshift Int64 deriving (Show, Eq, Enum, Bounded)
+
+step :: Xorshift -> Xorshift
+step (Xorshift a) = Xorshift d where
+	b = xor a (shiftL a 13)
+	c = xor b (shiftR b  7)
+	d = xor c (shiftL c 17)
+
+instance RandomGen Xorshift where
+	next a = (fromIntegral c, b) where
+		b@(Xorshift c) = step a
+
+	split  = error "Splitting on Xorshift not implemented"
+
+	genRange a = (fromEnum (asTypeOf minBound a), fromEnum (asTypeOf maxBound a))
+
+
+type RandomGenerator = Xorshift
+--type RandomGenerator = StdGen
+
+-- source = http://hackage.haskell.org/package/xorshift-1/src/src/Random/Xorshift.hs
 
 
 
@@ -35,13 +67,12 @@ inRelation a = ((==Lover).connection.head) a
 
 
 
-birth :: Int -> StdGen -> People -> People
-birth _ _ [] = []
-birth iteration gen people = p ++ b
+birth :: Int -> RandomGenerator -> People -> People
+birth iteration gen people = fromList $ p ++ b
 	where
-		(p, b) = f people (randomListsOf 5 gen) $ chunksOf 5 [iteration*50000..]
+		(p, b) = f (toList people) (randomListsOf 5 gen) $ chunksOf 5 [iteration*50000..]
 
-		f :: People -> [[Float]] -> [[Int]] -> (People, People)
+		f :: [Person] -> [[Float]] -> [[Int]] -> ([Person], [Person])
 		f [] _ _ = ([],[])
 		f (person:people) randomLists ids
 			| isBabyMaker person = let
@@ -53,7 +84,7 @@ birth iteration gen people = p ++ b
 			where
 				isBabyMaker person = gender person == Female && inRelation (relations person)
 
-		makeBabies :: Person -> [Float] -> [Int] -> (Person, People)
+		makeBabies :: Person -> [Float] -> [Int] -> (Person, [Person])
 		makeBabies female randomList ids = foo female babies
 			where
 				babies = map fst $ filter f $ zip possibleBabies randomList
@@ -61,7 +92,7 @@ birth iteration gen people = p ++ b
 
 				possibleBabies = [Person i 0 g None [] | (i, g) <- zip ids (cycle [Female, Male])]
 
-				foo :: Person -> People -> (Person, People)
+				foo :: Person -> [Person] -> (Person, [Person])
 				foo parrent [] = (parrent, [])
 				foo parrent children = (addRelations (parrent, parrentToChild), map addRelations $ zip children (zipWith (:) childToParrent siblingRelations))
 					where
@@ -76,30 +107,35 @@ birth iteration gen people = p ++ b
 
 
 death :: People -> People
-death people = filter ((<60).age) people
+death people = V.filter ((<60).age) people
 
 
 
-change :: StdGen -> People -> People
-change _ [] = []
-change gen people = f (map (\a -> a { age = age a + 10 }) people) gen
+change :: RandomGenerator -> People -> People
+change gen people = V.zipWith3 f randomInts randomFloats aged
 	where
-		f :: People -> StdGen -> People
-		f [] _ = []
-		f (person:xs) gen
-			| inRelation (relations person) = breakUp : f xs gen'
-			| otherwise = match person people gen : f xs gen'
-			where
-				breakUp = if r > 0.9 then match person people gen else person
-				(r, gen') = (randomR (0, 1) gen :: (Float, StdGen))
+		randomInts = fromList $ take size $ chunksOf 10 (randomRs (0, size - 1) gen :: [Int])
+		randomFloats = fromList $ take size $ randomListsOf 11 gen
 
-		match :: Person -> People -> StdGen -> Person
-		match person people gen
+		size = V.length people
+
+		aged = V.map (\a -> a { age = age a + 10 }) people
+
+		f :: [Int] -> [Float] -> Person -> Person
+		f randomInts randomFloats person
+			| inRelation (relations person) = breakUp
+			| otherwise = m
+			where
+				breakUp = if head randomFloats > 0.9 then m else person
+				m = match person people randomInts (tail randomFloats)
+
+		match :: Person -> People -> [Int] -> [Float] -> Person
+		match person people randomInts randomFloats
 			| length mates == 0 = person
 			| otherwise = person { relations = Relation Lover (id (head mates)) : relations person }
 			where
-				potential = [p | i <- take 10 (randomRs (0, length people - 1) gen :: [Int]), let p = people !! i, gender person /= gender p, (not.inRelation.relations) p]
-				mates = map fst $ filter (\(p, r) -> r > 0.7) $ zip potential (randomRs (0, 1) gen :: [Float])
+				potential = [p | i <- randomInts, let p = people ! i, gender person /= gender p, (not.inRelation.relations) p]
+				mates = map fst $ filter (\(p, r) -> r > 0.7) $ zip potential randomFloats
 
 
 
@@ -144,11 +180,12 @@ change gen people = f (map (\a -> a { age = age a + 10 }) people) gen
 
 generations :: Int -> Int -> People -> [People]
 generations seed i first = first : (generations seed (i+1) $ ((birth i gen).death.(change gen)) first)
-	where gen = mkStdGen $ xor seed i
+	where gen = Xorshift $ fromIntegral $ xor seed i
+--	where gen = mkStdGen $ fromIntegral $ xor seed i
 
 
 start :: Int -> People
-start a = [Person i 20 g None [] | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+start a = fromList [Person i 20 g None [] | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
 
 seed :: Int
 seed = 0
@@ -157,7 +194,7 @@ main = do
 	n <- getLine
 	let g = (generations seed 0 (start 5)) !! read n
 	putStrLn ""
-	print $ length $ g
+	print $ V.length g
 --	print $ map age $ g
 --	print $ length $ filter ((==Lover).connection) $ snd $ g
 --	print $ length $ filter ((==Sibling).connection) $ snd $ g
