@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, CPP #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 import Prelude hiding (id)
 
@@ -42,8 +42,8 @@ step (Xorshift a) = Xorshift d where
 	d = xor c (shiftL c 17)
 
 instance RandomGen Xorshift where
-	next a = (fromIntegral c, b) where
-		b@(Xorshift c) = step a
+	next a = (fromIntegral c, b)
+		where b@(Xorshift c) = step a
 
 	split  = error "Splitting on Xorshift not implemented"
 
@@ -53,11 +53,10 @@ instance RandomGen Xorshift where
 type RandomGenerator = Xorshift
 --type RandomGenerator = StdGen
 
--- source = http://hackage.haskell.org/package/xorshift-1/src/src/Random/Xorshift.hs
-
 
 
 randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
+randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 
 
 
@@ -112,14 +111,16 @@ death people = V.filter ((<60).age) people
 
 
 change :: RandomGenerator -> People -> People
-change gen people = V.zipWith3 f randomInts randomFloats aged
+change gen people = (love.job.aged) people
 	where
-		randomInts = fromList $ take size $ chunksOf 10 (randomRs (0, size - 1) gen :: [Int])
-		randomFloats = fromList $ take size $ randomListsOf 11 gen
+		aged people = V.map (\a -> a { age = age a + 10 }) people
+		job people = V.zipWith getAJob people randomFloats2
+		love people = V.zipWith3 f randomInts randomFloats people
 
 		size = V.length people
-
-		aged = V.map (\a -> a { age = age a + 10 }) people
+		randomInts = fromList $ take size $ chunksOf 10 (randomRs (0, size - 1) gen :: [Int])
+		randomFloats = fromList $ take size $ randomListsOf_ 11 gen
+		randomFloats2 = fromList $ take size $ randomListsOf_ 2 gen
 
 		f :: [Int] -> [Float] -> Person -> Person
 		f randomInts randomFloats person
@@ -137,41 +138,22 @@ change gen people = V.zipWith3 f randomInts randomFloats aged
 				potential = [p | i <- randomInts, let p = people ! i, gender person /= gender p, (not.inRelation.relations) p]
 				mates = map fst $ filter (\(p, r) -> r > 0.7) $ zip potential randomFloats
 
+		getAJob :: Person -> [Float] -> Person
+		getAJob person random
+			| proffesion person == None = person { proffesion = f random }
+			| otherwise = person
+			where f random
+				| chansFarmer > random !! 0 = Farmer
+				| chansAdministrator > random !! 1 = Administrator
+				| otherwise = Beggar
 
+		chansFarmer = demand Farmer 3
+		chansAdministrator = f (V.length people)
+			where f x = 1.001 ^^ (0 - (x + 1000)) + 0.1
 
-
-
-
-
-
---randomRsg :: (RandomGen g, Random a) => Int -> (a, a) -> g -> ([a], g)
---randomRsg antal range gen = (take antal $ randomRs range gen, snd $ split gen)
-
-
---change :: StdGen -> (People,Relations) -> (People,Relations)
---change _ ([], _) = ([], [])
---change randGen (people, relations) = (p, r)
---	where
---		p :: People
---		p = map (\(a, r) -> Person (id a) (age a + 10) (gender a) (getAJob a r)) $ zip people $ chunksOf 2 (randomRs (0.0, 1.0) (snd (split randGen)) :: [Float])
---
---		getAJob :: Person -> [Float] -> Proffesion
---		getAJob person r
---			| proffesion person == None = f p r
---			| otherwise = proffesion person
---			where f p r
---				| chansFarmer > r !! 0 = Farmer
---				| chansAdministrator > r !! 1 = Administrator
---				| otherwise = Beggar
---
---		chansFarmer = demand Farmer 3
---		chansAdministrator = f (length people)
---			where f x = 1.001 ^^ (0 - (x + 1000)) + 0.1
---
---		demand :: Proffesion -> Float -> Float
---		demand work ratio = (((fromIntegral (length people)) / n) / ratio) / 2
---			where n = fromIntegral $ length $ filter ((==work).proffesion) people
-
+		demand :: Proffesion -> Float -> Float
+		demand work ratio = (((fromIntegral (V.length people)) / n) / ratio) / 2
+			where n = fromIntegral $ V.length $ V.filter ((==work).proffesion) people
 
 
 
