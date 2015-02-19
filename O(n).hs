@@ -2,17 +2,18 @@
 
 import Prelude hiding (id)
 
-
 import Data.Vector ((!), fromList, toList, Vector)
-import qualified Data.Vector as V (length, map, filter, zip, zipWith, zipWith3)
+import qualified Data.Vector as V
+
 import Data.List.Split (chunksOf)
-import qualified Data.List as L (length, map, filter, zip, zipWith)
+import qualified Data.List as L
 
 import Data.Int (Int64)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
+import Control.Monad.ST
 
 
 
@@ -23,7 +24,7 @@ type Relations = [Relation]
 
 type ID = Int
 data Gender = Male | Female deriving (Show, Eq)
-data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq)
+data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 data Person = Person { id :: ID, age :: Int, gender :: Gender, proffesion :: Proffesion, relations :: Relations } deriving (Show)
 type People = Vector Person
 
@@ -38,7 +39,7 @@ newtype Xorshift = Xorshift Int64 deriving (Show, Eq, Enum, Bounded)
 step :: Xorshift -> Xorshift
 step (Xorshift a) = Xorshift d where
 	b = xor a (shiftL a 13)
-	c = xor b (shiftR b  7)
+	c = xor b (shiftR b 7)
 	d = xor c (shiftL c 17)
 
 instance RandomGen Xorshift where
@@ -58,7 +59,8 @@ type RandomGenerator = Xorshift
 randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 
-
+rescale :: Int -> Int -> Int -> Int
+rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
 
 inRelation :: Relations -> Bool
 inRelation [] = False
@@ -110,8 +112,13 @@ death people = V.filter ((<60).age) people
 
 
 
+
+toBuckets :: (Enum e) => Int -> (Person -> e) -> People -> Vector People
+toBuckets size test list = V.map (f list) $ fromList [0..size]
+	where f list i = V.filter ((==i).fromEnum.test) list
+
 change :: RandomGenerator -> People -> People
-change gen people = (love.job.aged) people
+change gen people = (job.love.aged) people
 	where
 		aged people = V.map (\a -> a { age = age a + 10 }) people
 		job people = V.zipWith getAJob people randomFloats2
@@ -135,8 +142,12 @@ change gen people = (love.job.aged) people
 			| length mates == 0 = person
 			| otherwise = person { relations = Relation Lover (id (head mates)) : relations person }
 			where
-				potential = [p | i <- randomInts, let p = people ! i, gender person /= gender p, (not.inRelation.relations) p]
 				mates = map fst $ filter (\(p, r) -> r > 0.7) $ zip potential randomFloats
+				potential = potentialRandom ++ potentialProffesional
+				potentialRandom = [p | i <- drop 5 randomInts, let p = people ! i, gender person /= gender p, (not.inRelation.relations) p]
+				prof :: Vector Person
+				prof = proffesionals ! (fromEnum $ proffesion person)
+				potentialProffesional = [p | i <- map (rescale (V.length people) (V.length prof)) $ take 5 randomInts, let p = prof ! i, gender person /= gender p, (not.inRelation.relations) p]
 
 		getAJob :: Person -> [Float] -> Person
 		getAJob person random
@@ -155,7 +166,36 @@ change gen people = (love.job.aged) people
 		demand work ratio = (((fromIntegral (V.length people)) / n) / ratio) / 2
 			where n = fromIntegral $ V.length $ V.filter ((==work).proffesion) people
 
+		proffesionals = toBuckets (fromEnum (maxBound :: Proffesion)) proffesion people
 
+
+--		enumToList :: (Enum a, Bounded a) => [a]
+--		enumToList = [minBound..]
+
+--		enumSize :: (Enum a, Bounded a) => Int
+--		enumSize = length [minBound..]
+
+
+
+--toBuckets :: (Enum e) => Int -> (Person -> e) -> Vector Person -> Vector (Vector Person)
+--toBuckets size test list = V.accumulate (V.++) buckets $ V.map (placeInBucket buckets) list
+--	where
+--		placeInBucket :: Vector (Vector Person) -> Person -> (Int, Vector Person)
+--		placeInBucket b a = (i, V.snoc (b ! i) a)
+--			where i = fromEnum (test a)
+
+--		buckets :: Vector (Vector Person)
+--		buckets = V.replicate size V.empty
+
+
+--	genRange a = (fromEnum (asTypeOf minBound a), fromEnum (asTypeOf maxBound a))
+
+
+
+--toBucketsFast :: (Enum e) => Int -> (Person -> e) -> Vector Person -> Vector (Vector Person)
+--toBucketsFast size test list = runST $ do
+--	buckets <- M.new (length list) -- :: Vector (Vector Person)
+--	return buckets
 
 
 
@@ -177,6 +217,7 @@ main = do
 	let g = (generations seed 0 (start 5)) !! read n
 	putStrLn ""
 	print $ V.length g
+	print $ toList $ V.map V.length $ toBuckets (fromEnum (maxBound :: Proffesion)) proffesion g
 --	print $ map age $ g
 --	print $ length $ filter ((==Lover).connection) $ snd $ g
 --	print $ length $ filter ((==Sibling).connection) $ snd $ g
