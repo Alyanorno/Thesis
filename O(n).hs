@@ -59,6 +59,9 @@ type RandomGenerator = Xorshift
 randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 
+binarySearch :: People -> ID -> Person
+binarySearch people element = fromJust $ V.find ((==element).id) people -- TODO: Change to binary, also redo to use maybe
+
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
 
@@ -166,7 +169,36 @@ change gen people = (job.love.aged) people
 		demand work ratio = (((fromIntegral (V.length people)) / n) / ratio) / 2
 			where n = fromIntegral $ V.length $ V.filter ((==work).proffesion) people
 
+		proffesionals :: Vector People
 		proffesionals = toBuckets (fromEnum (maxBound :: Proffesion)) proffesion people
+
+		-- Take a sample of x size from each proffesional
+		-- Count number of lovers from that sample to each other group
+		-- Calculate percentage based number of lovers to each group
+		relationsBetweenProffesionals :: Vector (Vector Float)
+		relationsBetweenProffesionals = V.map procentOfLovers numberOfLovers
+			where
+				procentOfLovers :: Vector Int -> Vector Float
+				procentOfLovers prof = V.map ((/ total).fromIntegral) prof
+					where total = fromIntegral $ V.foldr1 (+) prof
+
+				numberOfLovers :: Vector (Vector Int)
+				numberOfLovers = fromList [fromList [lovers s j | j <- enums] | i <- enums, let s = statisticalSample i ]
+					where enums = [0..(fromEnum (maxBound :: Proffesion))]
+
+				lovers :: People -> Int -> Int
+				lovers list i = V.length $ V.filter ((==i).fromEnum.proffesion.(binarySearch people).to.head.relations) list
+
+				statisticalSample :: Int -> People
+				statisticalSample i = V.map ((proffesionals ! i) !) $ fromList $ take 100 (randomRs (0, V.length proffesionals - 1) gen :: [Int])
+
+
+
+
+
+
+
+
 
 
 --		enumToList :: (Enum a, Bounded a) => [a]
