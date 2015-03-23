@@ -16,14 +16,8 @@ import System.Random
 import Stuff
 import Change
 
-_and conditions x = and $ map ($ x) conditions
-_or conditions x = or $ map ($ x) conditions
-
---vsplitPlaces :: (Num a) => Vector Int -> Vector Int
-vsplitPlaces :: Vector Int -> Vector ID -> Vector (Vector ID)
-vsplitPlaces places list
-	| length places == 0 = (fromList [])
-	| L.otherwise = snoc (vsplitPlaces (tail places) (drop (head places) list)) (take (head places) list)
+--_and conditions x = and $ map ($ x) conditions
+--_or conditions x = or $ map ($ x) conditions
 
 
 birth :: Int -> RandomGenerator -> People -> People
@@ -43,7 +37,7 @@ birth iteration gen people = p ++ foldr (++) empty babies
 				f mother ids = map (\id' -> makeBaby id' Male (id mother, lover mother)) ids
 
 		babyMakers :: People
-		babyMakers = filter (_and $ fromList [(==Female).gender, (/=0).lover]) people 
+		babyMakers = filter (((==Female).gender) .&&. ((/=0).lover)) people 
 
 		numberOfBabies :: Vector Int
 		numberOfBabies = fromList $ L.take (length babyMakers) (randomRs (0, 5) gen :: [Int])
@@ -53,7 +47,7 @@ birth iteration gen people = p ++ foldr (++) empty babies
 
 
 makeBaby :: ID -> Gender -> (ID, ID) -> Person
-makeBaby id gender parrents = Person id 0 gender None Endorphi 0 parrents empty []
+makeBaby id gender parrents = Person id 0 gender None Endorphi 0 parrents empty [] (0,0)
 
 
 

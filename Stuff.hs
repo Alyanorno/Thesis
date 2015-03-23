@@ -4,7 +4,7 @@ module Stuff where
 
 import Prelude hiding (id)
 
-import Data.Vector ((!), fromList, toList, Vector)
+import Data.Vector ((!), fromList, toList, Vector, snoc)
 import qualified Data.Vector as V
 
 import Data.List.Split (chunksOf)
@@ -21,6 +21,9 @@ import Control.Monad.ST
 (<$>) = V.map
 (<*>) = V.zipWith ($)
 
+(.&&.) f g a = (f a) && (g a)
+(.||.) f g a = (f a) || (g a)
+
 --data Culture = Culture { conservative :: Float, groupDivision :: Float }
 --type Cultures = [Culture]
 data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
@@ -34,7 +37,21 @@ type Professions = [Profession]
 type ID = Int
 data Gender = Male | Female deriving (Show, Eq)
 -- data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
-data Person = Person { id :: ID, age :: Int, gender :: Gender, profession :: Profession, culture :: Culture, lover :: ID, parrents :: (ID, ID), children :: Vector ID, friends :: [ID] } deriving (Show)
+data Person = Person {
+	-- Unique number used to identifiy person, people are always stored in order
+	id :: ID,
+	age :: Int,
+	gender :: Gender,
+	profession :: Profession,
+	culture :: Culture,
+	-- A zero means no lover
+	lover :: ID,
+	parrents :: (ID, ID),
+	children :: Vector ID,
+	friends :: [ID],
+	-- Below a certain age this attribute is ignored
+	position :: (Int, Int)
+	} deriving (Show)
 type People = Vector Person
 
 instance Eq Person where
@@ -67,6 +84,10 @@ type RandomGenerator = Xorshift
 
 
 
+vsplitPlaces :: (Eq e) => Vector Int -> Vector e -> Vector (Vector e)
+vsplitPlaces places list
+	| V.length places == 0 = (fromList [])
+	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
 
 randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
@@ -74,7 +95,6 @@ randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
 
-
 start :: Int -> People
-start a = fromList [Person i 20 g None Endorphi 0 (0,0) V.empty [] | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+start a = fromList [Person i 20 g None Endorphi 0 (0,0) V.empty [] (0,0) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
 
