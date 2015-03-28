@@ -6,3 +6,4 @@ Iteration Population Time(sec)
 14 44176 1.61
 15 87478 3.17
 20 2667582 101.67
+
