@@ -35,9 +35,10 @@ data Profession = Administrator | Farmer | Beggar | None deriving (Show, Eq, Enu
 type Professions = [Profession]
 
 type ID = Int
-data Gender = Male | Female deriving (Show, Eq)
+data Gender = Male | Female deriving (Show, Eq, Enum)
 -- data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 data Person = Person {
+	alive :: Bool,
 	-- Unique number used to identifiy person, people are always stored in order
 	id :: ID,
 	age :: Int,
@@ -82,19 +83,28 @@ instance RandomGen Xorshift where
 type RandomGenerator = Xorshift
 --type RandomGenerator = StdGen
 
-
+(.!) :: People -> ID -> Person
+(.!) people i = people ! (i - (id $ people ! 0))
 
 vsplitPlaces :: (Eq e) => Vector Int -> Vector e -> Vector (Vector e)
 vsplitPlaces places list
 	| V.length places == 0 = (fromList [])
 	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
 
-randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
-randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
+--randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
+--randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
+
+--randomVectorsOf n size gen range = generate size (\i -> slice (i*n) (i*(n+i)))
+--	where v = generate (size*n) ((xor gen).step.fromInteger)
+
+--randomVectorsOf n size gen range = generate size (\i -> generate n $ xor gen $ step $ fromInteger $ i * n)
+
+randomVectorsOf :: (Random e, RandomGen g) => Int -> Int -> g -> (e,e) -> Vector [e]
+randomVectorsOf n size gen range = fromList $ take size $ chunksOf n $ randomRs range gen
 
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
 
 start :: Int -> People
-start a = fromList [Person i 20 g None Endorphi 0 (0,0) V.empty [] (0,0) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (0,0) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
 
