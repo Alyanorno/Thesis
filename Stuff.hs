@@ -63,7 +63,7 @@ type World = ( People, Professions, Cultures )
 
 
 
-newtype Xorshift = Xorshift Int64 deriving (Show, Eq, Enum, Bounded)
+newtype Xorshift = Xorshift {fromXorshift :: Int64} deriving (Show, Eq, Enum, Bounded)
 
 step :: Xorshift -> Xorshift
 step (Xorshift a) = Xorshift d where
@@ -86,10 +86,10 @@ type RandomGenerator = Xorshift
 (.!) :: People -> ID -> Person
 (.!) people i = people ! (i - (id $ people ! 0))
 
-vsplitPlaces :: (Eq e) => Vector Int -> Vector e -> Vector (Vector e)
-vsplitPlaces places list
-	| V.length places == 0 = (fromList [])
-	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
+--vsplitPlaces :: (Eq e) => Vector Int -> Vector e -> Vector (Vector e)
+--vsplitPlaces places list
+--	| V.length places == 0 = (fromList [])
+--	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
 
 --randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
 --randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
@@ -97,10 +97,13 @@ vsplitPlaces places list
 --randomVectorsOf n size gen range = generate size (\i -> slice (i*n) (i*(n+i)))
 --	where v = generate (size*n) ((xor gen).step.fromInteger)
 
+--randomVectorsOf n size gen range = fromList $ take size $ chunksOf n $ randomRs range gen
 --randomVectorsOf n size gen range = generate size (\i -> generate n $ xor gen $ step $ fromInteger $ i * n)
 
-randomVectorsOf :: (Random e, RandomGen g) => Int -> Int -> g -> (e,e) -> Vector [e]
-randomVectorsOf n size gen range = fromList $ take size $ chunksOf n $ randomRs range gen
+randomVectorsOf :: Int -> Int -> RandomGenerator -> (Float, Float) -> Vector [Float]
+randomVectorsOf n size gen range = V.generate size (\i -> take n (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)) :: [Float])
+randomVectorsOf_ :: Int -> Int -> RandomGenerator -> (Int, Int) -> Vector [Int]
+randomVectorsOf_ n size gen range = V.generate size (\i -> take n (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)) :: [Int])
 
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))

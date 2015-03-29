@@ -28,9 +28,9 @@ change gen professions cultures people' = (home.job.love.aged) people'
 	where
 		aged people = V.map (\a -> a { age = age a + 10 }) people
 
-		love people = createLovers 0 people professionalBuckets professionalRelations cultureBuckets culturalRelations randomInts randomFloats
+		love people = createLovers people professionalBuckets professionalRelations cultureBuckets culturalRelations randomInts randomFloats
 			where
-				randomInts = randomVectorsOf 15 size gen (0, size-1) :: Vector [Int] -- fromList (take size $ chunksOf 15 (randomRs (0, size - 1) gen)) :: Vector Int
+				randomInts = randomVectorsOf_ 15 size gen (0, size-1) :: Vector [Int] -- fromList (take size $ chunksOf 15 (randomRs (0, size - 1) gen)) :: Vector Int
 				randomFloats = randomVectorsOf 12 size gen (0, 1) :: Vector [Float]
 		job people = (getAJob chansFarmer chansAdministrator) <$> people <*> (randomVectorsOf 2 size gen (0, 1) :: Vector [Float])
 			where
@@ -90,20 +90,28 @@ change gen professions cultures people' = (home.job.love.aged) people'
 		culturalRelations = relationsBetween gen people numberCultures culture cultureBuckets sampleSize
 
 
-createLovers :: Int -> People -> Vector People -> Vector (Vector Float) -> Vector People -> Vector (Vector Float) -> Vector [Int] -> Vector [Float] -> People
-createLovers i people professionals professionalRelations culturals culturalRelations randomInts' randomFloats'
-	| i >= V.length people = people
-	| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive)) person = createLovers (i+1) people professionals professionalRelations culturals culturalRelations randomInts' randomFloats'
-	| m == 0 = createLovers (i+1) people professionals professionalRelations culturals culturalRelations randomInts' randomFloats'
-	| otherwise = createLovers (i+1) people' professionals professionalRelations culturals culturalRelations randomInts' randomFloats'
-	where
-		people' = V.modify (\v -> do {
+createLovers :: People -> Vector People -> Vector (Vector Float) -> Vector People -> Vector (Vector Float) -> Vector [Int] -> Vector [Float] -> People
+createLovers people professionals professionalRelations culturals culturalRelations randomInts' randomFloats' = V.modify (\v -> loop 0 v) people
+	where loop i v
+		| i >= V.length people = return ()
+		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive)) person = loop (i+1) v
+		| m == 0 = loop (i+1) v
+		| otherwise = do
 			i' <- (return $ m - start);
 			p <- M.read v i;
 			p' <- M.read v i';
 			M.write v i (p {lover = m});
 			M.write v i' (p' {lover = start + i});
-			}) people
+			loop (i+1) v
+		where
+--		people' = V.accum (\p l -> p {lover = l}) people [(i, m), (m-start, start+i)]
+--		people' = V.modify (\v -> do {
+--			i' <- (return $ m - start);
+--			p <- M.read v i;
+--			p' <- M.read v i';
+--			M.write v i (p {lover = m});
+--			M.write v i' (p' {lover = start + i});
+--			}) people
 
 		start :: Int
 		start = id $ people ! 0
@@ -119,17 +127,16 @@ createLovers i people professionals professionalRelations culturals culturalRela
 		match person people randomInts randomFloats
 			| V.length potentialMates == 0 = 0
 			| otherwise = id $ potentialMates ! round ((head randomFloats) * (fromIntegral $ (V.length potentialMates) - 1))
-			-- | otherwise = person { lover = id $ potentialMates ! round ((head randomFloats) * (fromIntegral $ (V.length potentialMates) - 1)) }
 			where
 				potentialMates :: People
-				potentialMates = potentialRandom --V.++ potentialProfessional V.++ potentialSameProfessional V.++ potentialCulture V.++ potentialSameCulture
+				potentialMates = potentialRandom V.++ potentialProfessional V.++ potentialSameProfessional V.++ potentialCulture V.++ potentialSameCulture
 
 				potentialRandom :: People
 				potentialRandom = fromList [p | i <- take 5 $ drop 10 randomInts, let p = people ! i, gender person /= gender p, ((==0).lover) p]
 
 				-- TODO: FIX ERROR
 				potentialProfessional :: People
-				potentialProfessional = V.empty --V.foldr (V.++) V.empty $ V.map (\(prof,r) -> V.map ((prof !).(rescale (V.length people) (V.length prof))) r ) $ V.zip professionals $ vsplitPlaces profs $ fromList randomInts -- Change to drop a certain number of them and increase randomInts size
+				potentialProfessional = V.empty -- V.foldr (V.++) V.empty $ V.map (\(prof,r) -> V.map ((prof !).(rescale (V.length people) (V.length prof))) r ) $ V.zip professionals $ vsplitPlaces profs $ fromList randomInts -- Change to drop a certain number of them and increase randomInts size
 					where profs = V.map (floor.(*10)) $ professionalRelations ! (fromEnum $ profession person)
 
 				-- TODO: FIX ERROR
