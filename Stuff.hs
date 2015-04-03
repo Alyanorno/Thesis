@@ -105,5 +105,8 @@ rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 start :: Int -> People
-start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (0,0) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+
+mapRange :: Int
+mapRange = 50
 

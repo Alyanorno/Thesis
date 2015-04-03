@@ -57,6 +57,6 @@ death people = V.map f $ V.filter ((<180).age) people
 		| otherwise = p
 
 seed :: Int
-seed = 1 -- If zero the program chrashed on the fourth iteration..... WHAT??!!!
+seed = 1 -- If zero the program chrashes on the fourth iteration..... WHAT??!!!
 
 

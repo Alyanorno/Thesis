@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
 
 module Change (change, toBuckets) where
 
@@ -16,6 +16,7 @@ import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
+import System.Random.Mersenne.Pure64 as R
 import Control.Monad (liftM2)
 import Control.Monad.ST
 import Stuff
@@ -40,14 +41,19 @@ change gen professions cultures people' = (home.job.love.aged) people'
 					where f x = 1.001 ^^ (0 - (x + 1000)) + 0.1
 
 		home :: People -> People
-		home p = (getAHome range maps) <$> p <*> (V.map g p) <*> (V.generate size f)
+		home p = (getAHome range maps) <$> p <*> (V.map g p) <*> (V.map Xorshift $ rnd (pureMT $ fromIntegral $ fromXorshift gen) size)
 			where
-				g = (position.(\x -> p ! (x - id (p ! 0))).fst.parrents)
+				rnd :: PureMT -> Int -> Vector Int64
+				rnd g n = V.create $ do { v <- M.new n; fill v 0 g; return v }
+					where
+						fill v i g
+							| i < n = do
+								(x, g') <- return $ R.randomInt64 g
+								M.write v i x
+								fill v (i+1) g'
+							| otherwise = return ()
 
-				f :: Int -> StdGen
-				f 0 = mkStdGen $ fromIntegral $ fromXorshift gen
-				f i = n
-					where (_,n) = next $ f (i-1)
+				g = (position.(\x -> p ! (x - id (p ! 0))).fst.parrents)
 
 		size = V.length people';
 		people = V.filter alive people'
@@ -64,7 +70,7 @@ change gen professions cultures people' = (home.job.love.aged) people'
 				distanceFromCenter = V.map (fromIntegral.(\(x,y) -> x^2 + y^2)) positionMap
 
 				concentrationOfPeopleMap :: Vector Float
-				concentrationOfPeopleMap = V.map ((2^).(*(-1)).fromIntegral.V.length) peopleMap
+				concentrationOfPeopleMap = V.map ((2^).fromIntegral.V.length) peopleMap
 
 				culturalMap :: Vector (Vector Float)
 				culturalMap = V.map (\i -> V.map (\p -> V.sum $ V.map (relationsTo i) p) peopleMap) $ fromList [0..(fromEnum (maxBound :: Culture))]
@@ -77,8 +83,8 @@ change gen professions cultures people' = (home.job.love.aged) people'
 						conditions = ((>10).age) .&&. ((==0).lover) .&&. ((/=(0,0)).position)
 
 				positionMap :: Vector (Int, Int)
-				positionMap = fromList [(x,y) | x <- [-range..range], y <- [-range..range]]
-		range = 50
+				positionMap = fromList [(x,y) | x <- [0..range], y <- [0..range]]
+		range = mapRange -- defined in Stuff.hs
 
 		numberProfessions = (length [0..(fromEnum (maxBound :: Profession))])
 		numberCultures = (length [0..(fromEnum (maxBound :: Culture))])
@@ -186,16 +192,18 @@ getAJob chansFarmer chansAdministrator person random
 		| otherwise = Beggar
 
 
-getAHome :: Int -> Vector (Vector Float) -> Person -> (Int,Int) -> StdGen -> Person
+getAHome :: Int -> Vector (Vector Float) -> Person -> (Int,Int) -> RandomGenerator -> Person
 getAHome range maps person parrentPosition gen
-	| ((>10).age) .&&. ((/=0).lover) .&&. ((==(0,0)).position) $ person = person --{ position = theHome}
+	| ((>10).age) .&&. ((/=0).lover) .&&. ((==(0,0)).position) $ person = theHome
 	| otherwise = person
-		where
-			theHome = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range*2)) (map ! (x'+y'*range*2))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes) gen)]
-			map = maps ! (fromEnum $ culture person)
-			possibleHomes = [(x,y) | let (x',y') = parrentPosition, (x,y) <- zip [x'-range'..x'+range'] [y'-range'..y'+range'], x < max, x > 0, y < max * 2, y > 0]
-			range' = 2
-			max = (range * 2) ^ 2
+	where
+		theHome
+			| null possibleHomes = person
+			| otherwise = person {position = home}
+			where !home = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range)) (map ! (x'+y'*range))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
+		map = maps ! (fromEnum $ culture person)
+		possibleHomes = [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
+		range' = 2
 
 
 
