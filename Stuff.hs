@@ -75,7 +75,7 @@ instance RandomGen Xorshift where
 	next a = (fromIntegral c, b)
 		where b@(Xorshift c) = step a
 
-	split  = error "Splitting on Xorshift not implemented"
+	split = error "Splitting on Xorshift not implemented"
 
 	genRange a = (fromEnum (asTypeOf minBound a), fromEnum (asTypeOf maxBound a))
 
@@ -91,13 +91,6 @@ type RandomGenerator = Xorshift
 --	| V.length places == 0 = (fromList [])
 --	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
 
---randomListsOf n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
---randomListsOf_ n gen = chunksOf 5 (randomRs (0, 1) gen :: [Float])
-
---randomVectorsOf n size gen range = generate size (\i -> slice (i*n) (i*(n+i)))
---	where v = generate (size*n) ((xor gen).step.fromInteger)
-
---randomVectorsOf n size gen range = fromList $ take size $ chunksOf n $ randomRs range gen
 --randomVectorsOf n size gen range = generate size (\i -> generate n $ xor gen $ step $ fromInteger $ i * n)
 
 randomVectorsOf :: Int -> Int -> RandomGenerator -> (Float, Float) -> Vector [Float]
@@ -107,6 +100,9 @@ randomVectorsOf_ n size gen range = V.generate size (\i -> take n (randomRs rang
 
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
+
+rescale_ :: Int -> Float -> Int -> Float
+rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 start :: Int -> People
 start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (0,0) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 

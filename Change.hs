@@ -26,26 +26,30 @@ import Stuff
 change :: RandomGenerator -> Professions -> Cultures -> People -> People
 change gen professions cultures people' = (home.job.love.aged) people'
 	where
-		aged people = V.map (\a -> a { age = age a + 10 }) people
+		aged p = V.map (\a -> a { age = age a + 10 }) p
 
-		love people = createLovers people professionalBuckets professionalRelations cultureBuckets culturalRelations randomInts randomFloats
-			where
-				randomInts = randomVectorsOf_ 15 size gen (0, size-1) :: Vector [Int] -- fromList (take size $ chunksOf 15 (randomRs (0, size - 1) gen)) :: Vector Int
-				randomFloats = randomVectorsOf 12 size gen (0, 1) :: Vector [Float]
-		job people = (getAJob chansFarmer chansAdministrator) <$> people <*> (randomVectorsOf 2 size gen (0, 1) :: Vector [Float])
+		love p = createLovers gen p professionalBuckets professionalRelations cultureBuckets culturalRelations
+		job p = (getAJob chansFarmer chansAdministrator) <$> p <*> (randomVectorsOf 2 size gen (0, 1) :: Vector [Float])
 			where
 				chansFarmer = demand Farmer 3
 					where
 						demand :: Profession -> Float -> Float
-						demand work ratio = (((fromIntegral (V.length people)) / n) / ratio) / 2
-							where n = fromIntegral $ V.length $ V.filter ((==work).profession) people
-				chansAdministrator = f (V.length people)
+						demand work ratio = (((fromIntegral (V.length p)) / n) / ratio) / 2
+							where n = fromIntegral $ V.length $ V.filter ((==work).profession) p
+				chansAdministrator = f (V.length p)
 					where f x = 1.001 ^^ (0 - (x + 1000)) + 0.1
 
 		home :: People -> People
-		home people = (getAHome maps) <$> people <*> (fromList $ take size (randomRs (0, 1) gen :: [Float]))
+		home p = (getAHome range maps) <$> p <*> (V.map g p) <*> (V.generate size f)
+			where
+				g = (position.(\x -> p ! (x - id (p ! 0))).fst.parrents)
 
-		size = V.length people'
+				f :: Int -> StdGen
+				f 0 = mkStdGen $ fromIntegral $ fromXorshift gen
+				f i = n
+					where (_,n) = next $ f (i-1)
+
+		size = V.length people';
 		people = V.filter alive people'
 
 		maps = V.map perCulture $ fromList [0..(fromEnum (maxBound :: Culture))]
@@ -74,7 +78,7 @@ change gen professions cultures people' = (home.job.love.aged) people'
 
 				positionMap :: Vector (Int, Int)
 				positionMap = fromList [(x,y) | x <- [-range..range], y <- [-range..range]]
-				range = 50
+		range = 50
 
 		numberProfessions = (length [0..(fromEnum (maxBound :: Profession))])
 		numberCultures = (length [0..(fromEnum (maxBound :: Culture))])
@@ -90,69 +94,80 @@ change gen professions cultures people' = (home.job.love.aged) people'
 		culturalRelations = relationsBetween gen people numberCultures culture cultureBuckets sampleSize
 
 
-createLovers :: People -> Vector People -> Vector (Vector Float) -> Vector People -> Vector (Vector Float) -> Vector [Int] -> Vector [Float] -> People
-createLovers people professionals professionalRelations culturals culturalRelations randomInts' randomFloats' = V.modify (\v -> loop 0 v) people
-	where loop i v
+createLovers :: RandomGenerator -> People -> Vector People -> Vector (Vector Float) -> Vector People -> Vector (Vector Float) -> People
+createLovers gen people professionals professionalRelations culturals culturalRelations = V.modify (\v -> loop 0 v gen) people
+	where loop i v gen
 		| i >= V.length people = return ()
-		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive)) person = loop (i+1) v
-		| m == 0 = loop (i+1) v
+		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive)) person = loop (i+1) v gen
+		| m == 0 = loop (i+1) v gen
 		| otherwise = do
+			let start = id $ people ! 0;
 			i' <- (return $ m - start);
-			p <- M.read v i;
+
 			p' <- M.read v i';
-			M.write v i (p {lover = m});
 			M.write v i' (p' {lover = start + i});
-			loop (i+1) v
+
+			p <- M.read v i;
+			M.write v i (p {lover = m});
+
+			loop (i+1) v gen'
 		where
---		people' = V.accum (\p l -> p {lover = l}) people [(i, m), (m-start, start+i)]
---		people' = V.modify (\v -> do {
---			i' <- (return $ m - start);
---			p <- M.read v i;
---			p' <- M.read v i';
---			M.write v i (p {lover = m});
---			M.write v i' (p' {lover = start + i});
---			}) people
-
-		start :: Int
-		start = id $ people ! 0
-
 		person = people ! i
-		randomInts = randomInts' ! i
-		randomFloats = randomFloats' ! i
+
+		(_,gen') = next gen
 
 		m :: Int
-		m = match person people randomInts (tail randomFloats)
+		m = match person people (f 0) (f 1) (f 2) (f 3) (f 4) (f 5)
 
-		match :: Person -> People -> [Int] -> [Float] -> ID
-		match person people randomInts randomFloats
-			| V.length potentialMates == 0 = 0
-			| otherwise = id $ potentialMates ! round ((head randomFloats) * (fromIntegral $ (V.length potentialMates) - 1))
+		f :: Int -> StdGen
+		f 0 = mkStdGen $ fromIntegral $ fromXorshift gen
+		f i = n
+			where (_,n) = next $ f (i-1)
+
+		match :: Person -> People -> StdGen -> StdGen -> StdGen -> StdGen -> StdGen -> StdGen -> ID
+		match person people gen randomGen profGen cultGen sameProfGen sameCultGen
+			| null potentialMates = 0
+			| otherwise = id $ potentialMates !! r
 			where
-				potentialMates :: People
-				potentialMates = potentialRandom V.++ potentialProfessional V.++ potentialSameProfessional V.++ potentialCulture V.++ potentialSameCulture
+				r :: Int
+				(r,_) = randomR (0, (length potentialMates)-1) gen
 
-				potentialRandom :: People
-				potentialRandom = fromList [p | i <- take 5 $ drop 10 randomInts, let p = people ! i, gender person /= gender p, ((==0).lover) p]
+				potentialMates = filter (((/=gender person).gender) .&&. ((==0).lover)) $ potentialRandom ++ potentialProfessional ++ potentialSameProfessional ++ potentialCulture ++ potentialSameCulture
 
-				-- TODO: FIX ERROR
-				potentialProfessional :: People
-				potentialProfessional = V.empty -- V.foldr (V.++) V.empty $ V.map (\(prof,r) -> V.map ((prof !).(rescale (V.length people) (V.length prof))) r ) $ V.zip professionals $ vsplitPlaces profs $ fromList randomInts -- Change to drop a certain number of them and increase randomInts size
-					where profs = V.map (floor.(*10)) $ professionalRelations ! (fromEnum $ profession person)
 
-				-- TODO: FIX ERROR
-				potentialCulture :: People
-				potentialCulture = V.empty -- V.foldr (V.++) V.empty $ V.map (\(cult,r) -> V.map ((cult !).(rescale (V.length people) (V.length cult))) r ) $ V.zip culturals $ vsplitPlaces cults $ fromList randomInts -- Change to drop a certain number of them and increase randomInts size
-					where cults = V.map (floor.(*10)) $ culturalRelations ! (fromEnum $ culture person)
+				potentialRandom = map (people !) $ take 5 $ (randomRs (0, V.length people-1) randomGen)
+				potentialSameProfessional = map (prof !) $ take 5 $ randomRs (0, V.length prof-1) sameProfGen
+				potentialSameCulture = map (cult !) $ take 5 $ randomRs (0, V.length cult-1) sameCultGen
 
-				potentialSameProfessional :: People
-				potentialSameProfessional = fromList [p |
-					i <- takeRandom prof (take 5),
-					let p = prof ! i, gender person /= gender p, ((==0).lover) p]
 
-				potentialSameCulture :: People
-				potentialSameCulture = fromList [p |
-					i <- takeRandom prof ((take 5).(drop 5)),
-					let p = cult ! i, gender person /= gender p, ((==0).lover) p]
+
+--				potentialProfessional :: People
+--				potentialProfessional = V.foldr (V.++) V.empty $
+--					V.map (\(prof,r) ->
+--						V.map ((prof !).(rescale (V.length people) (V.length prof))) r ) $
+--							V.zip professionals $ vsplitPlaces profs $ fromList randomInts
+
+				potentialProfessional :: [Person]
+				potentialProfessional = concat $ map f $ zip [0..(fromEnum (maxBound :: Profession))] $ iterate (snd.next) profGen
+					where
+						f (i,g) = [p ! n | n <- take (profs ! i) (randomRs (0, V.length p-1) g)]
+							where p = professionals ! i
+
+						profs = V.map (floor.(*10)) $ professionalRelations ! (fromEnum $ profession person)
+
+--				potentialCulture :: People
+--				potentialCulture = V.foldr (V.++) V.empty $ V.map (\(cult,r) -> V.map ((cult !).(rescale (V.length people) (V.length cult))) r ) $ V.zip culturals $ vsplitPlaces cults $ fromList positionrandomInts
+--					where cults = V.map (floor.(*10)) $ culturalRelations ! (fromEnum $ culture person)
+
+				potentialCulture :: [Person]
+				potentialCulture = concat $ map f $ zip [0..(fromEnum (maxBound :: Culture))] $ iterate (snd.next) cultGen
+					where
+						f (i,g) = [p ! n | n <- take (cults ! i) (randomRs (0, V.length p-1) g)]
+							where p = culturals ! i
+
+						cults = V.map (floor.(*10)) $ culturalRelations ! (fromEnum $ culture person)
+
+
 
 				prof :: Vector Person
 				prof = professionals ! (fromEnum $ profession person)
@@ -160,7 +175,6 @@ createLovers people professionals professionalRelations culturals culturalRelati
 				cult :: Vector Person
 				cult = culturals ! (fromEnum $ culture person)
 
-				takeRandom bucket f = map (rescale (V.length people) (V.length bucket)) $ f randomInts
 
 getAJob :: Float -> Float -> Person -> [Float] -> Person
 getAJob chansFarmer chansAdministrator person random
@@ -171,12 +185,17 @@ getAJob chansFarmer chansAdministrator person random
 		| chansAdministrator > random !! 1 = Administrator
 		| otherwise = Beggar
 
--- TOOD: Not done
-getAHome :: Vector (Vector Float) -> Person -> Float -> Person
-getAHome maps person random
-	| ((>10).age) .&&. ((/=0).lover) .&&. ((==(0,0)).position) $ person = person { position = findHome (fromEnum $ culture person)}
+
+getAHome :: Int -> Vector (Vector Float) -> Person -> (Int,Int) -> StdGen -> Person
+getAHome range maps person parrentPosition gen
+	| ((>10).age) .&&. ((/=0).lover) .&&. ((==(0,0)).position) $ person = person --{ position = theHome}
 	| otherwise = person
-		where findHome culture = (0,0) --maps ! culture ! 0 -- TODO: Not Done
+		where
+			theHome = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range*2)) (map ! (x'+y'*range*2))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes) gen)]
+			map = maps ! (fromEnum $ culture person)
+			possibleHomes = [(x,y) | let (x',y') = parrentPosition, (x,y) <- zip [x'-range'..x'+range'] [y'-range'..y'+range'], x < max, x > 0, y < max * 2, y > 0]
+			range' = 2
+			max = (range * 2) ^ 2
 
 
 
