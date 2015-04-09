@@ -36,29 +36,31 @@ birth iteration gen people = p V.++ (fromList $ concat babies)
 		p = V.accum (\p b -> p {children = (children p) V.++ (fromList $ b)}) people $ concat $ map f babies
 			where
 				f :: [Person] -> [(ID, [ID])]
-				f p = [(p1, b), (p2, b)]
+				f p = [(p1-offset, b), (p2-offset, b)]
 					where 
 						(p1, p2) = (parrents.head) p
+						offset = id $ people ! 0
 						b = map id p
 
 		babies :: [[Person]]
-		babies = zipWith f babyMakers $ filter (not.null) $ splitPlaces numberOfBabies ids
+		babies = filter (not.null) $ zipWith f babyMakers $ splitPlaces numberOfBabies ids
 			where
 				f :: Person -> [Int] -> [Person]
-				f mother ids = map (\id' -> makeBaby id' (toEnum $ mod id' 2) (id mother, lover mother)) ids
+				f mother ids
+					| null ids = []
+					| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids
 
 		babyMakers :: [Person]
-		babyMakers = toList $ V.filter (((==Female).gender) .&&. ((/=0).lover) .&&. alive) people 
+		babyMakers = toList $ V.filter (((==Female).gender) .&&. ((/=0).lover) .&&. ((<41).age) .&&. ((/=(0,0)).position) .&&. alive) people 
 
 		numberOfBabies :: [Int]
-		numberOfBabies = take (length babyMakers) (randomRs (0, 5) gen :: [Int])
+		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
 
 		ids = [start..start + foldr1 (+) numberOfBabies]
-		start = ((+1).id.V.head) people
+		start = ((+1).id.V.last) people
 
 
-makeBaby :: ID -> Gender -> (ID, ID) -> Person
-makeBaby id gender parrents = Person True id 0 gender None Endorphi 0 parrents empty [] (0,0)
-
+makeBaby :: ID -> (ID, ID) -> Culture -> Person
+makeBaby id parrents culture = Person True id 0 (toEnum $ mod id 2) None culture 0 parrents empty [] (0,0)
 
 

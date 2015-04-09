@@ -31,7 +31,7 @@ type Cultures = [Culture]
 
 --data Goods = Goods { name :: String, needs :: [Goods], timePerUnit :: Int }
 --data Proffesion = Proffesion { makes :: [Goods] }
-data Profession = Administrator | Farmer | Beggar | None deriving (Show, Eq, Enum, Bounded)
+data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 type Professions = [Profession]
 
 type ID = Int
@@ -105,8 +105,20 @@ rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 start :: Int -> People
-start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [0..a] (cycle [Male, Female]) ] 
+start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [1..a] (cycle [Male, Female]) ] 
 
 mapRange :: Int
-mapRange = 50
+mapRange = 20
+
+timeStep :: Int
+timeStep = 10
+
+scaleDistanceFromCenter :: Float -> Float
+scaleDistanceFromCenter = (*) 1
+
+scaleDistanceFromCulturalCenter :: Float -> Float
+scaleDistanceFromCulturalCenter = (*) 1
+
+scaleConcentrationOfpeople :: Float -> Float
+scaleConcentrationOfpeople = (*) 1 --(2^) -- TODO: Test
 
