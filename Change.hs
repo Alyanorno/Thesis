@@ -30,7 +30,8 @@ change gen professions cultures people' = (home.job.love.aged) people'
 		aged p = V.map (\a -> a { age = age a + timeStep }) p
 
 		love p = createLovers gen p professionalBuckets professionalRelations cultureBuckets culturalRelations
-		job p = (getAJob people) <$> p <*> (randomVectorsOf 2 size gen (0, 1) :: Vector [Float])
+
+		job p = (getAJob people chans) <$> p <*> (randomVectorsOf 2 size gen (0, 1) :: Vector [Float])
 			where
 				size = V.length p
  				chans = [chansFarmer, chansAdministrator, chansBeggar, 0]
@@ -67,10 +68,13 @@ change gen professions cultures people' = (home.job.love.aged) people'
 
 				-- TODO: Fix to be readable
 				distanceFromCulturalCenter :: Vector (Vector Float)
-				distanceFromCulturalCenter = V.map (V.map scaleDistanceFromCulturalCenter) $ V.map (\i -> let culturalCenter = V.map position $ cultureBuckets ! i; c = (\(x,y) -> (div x (V.length culturalCenter), div y (V.length culturalCenter))) $ V.foldr1 (\(x,y) (x',y') -> (x+x',y+y')) culturalCenter in V.map (fromIntegral.(distanceTo c)) positionMap) $ fromList [0..(fromEnum (maxBound :: Culture))]
+				distanceFromCulturalCenter = V.map (V.map scaleDistanceFromCulturalCenter) $ V.map (\i -> let culturalCenter = V.map position $ cultureBuckets ! i; c = (\(x,y) -> (div x (V.length culturalCenter), div y (V.length culturalCenter))) $ V.foldr1 (\(x,y) (x',y') -> (x+x',y+y')) culturalCenter in V.map ((distanceTo $ toFloat c).toFloat) positionMap) $ fromList [0..(fromEnum (maxBound :: Culture))]
 
 				distanceFromCenter :: Vector Float
-				distanceFromCenter = V.map (scaleDistanceFromCenter.fromIntegral.(distanceTo (25,25)) positionMap
+				distanceFromCenter = V.map (scaleDistanceFromCenter.(distanceTo (25,25)).toFloat) positionMap
+				
+				toFloat :: (Int,Int) -> (Float,Float)
+				toFloat (x,y) = (fromIntegral x, fromIntegral y)
 
 				distanceTo :: (Float,Float) -> (Float,Float) -> Float
 				distanceTo (x',y') (x,y) = (x-x')^2 + (y-y')^2
@@ -144,7 +148,7 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 				r :: Int
 				(r,_) = randomR (0, length potentialMates-1) gen
 
-				potentialMates = filter (((/=gender person).gender) .&&. ((==0).lover) .&&. (((==) (parrents person)).parrents) $ potentialRandom ++ potentialProfessional ++ potentialSameProfessional ++ potentialCulture ++ potentialSameCulture
+				potentialMates = filter (((/=gender person).gender) .&&. ((==0).lover) .&&. (((==) (parrents person)).parrents)) $ potentialRandom ++ potentialProfessional ++ potentialSameProfessional ++ potentialCulture ++ potentialSameCulture
 
 				potentialRandom = map (people !) $ take timeStep $ (randomRs (0, V.length people-1) randomGen)
 				potentialSameProfessional = map (prof !) $ take timeStep $ randomRs (0, V.length prof-1) sameProfGen
@@ -152,7 +156,9 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 
 
 				potentialProfessional :: [Person]
-				potentialProfessional = map (potential !) $ take timeStep $ (randomRs (0, V.length potential-1) profGen)
+				potentialProfessional
+					| null potential = []
+					| otherwise = map (potential !!) $ take timeStep $ (randomRs (0, length potential-1) profGen)
 					where
 						potential = concat $ map f $ zip [0..(fromEnum (maxBound :: Profession))] $ iterate (snd.next) profGen
 						f (i,g) = [p ! n | n <- take (profs ! i) (randomRs (0, V.length p-1) g)]
@@ -161,7 +167,9 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 						profs = V.map (floor.(*10)) $ professionalRelations ! (fromEnum $ profession person)
 
 				potentialCulture :: [Person]
-				potentialCulture = map (potential !) $ take timeStep $ (randomRs (0, V.length potential-1) cultGen)
+				potentialCulture
+					| null potential = []
+					| otherwise = map (potential !!) $ take timeStep $ (randomRs (0, length potential-1) cultGen)
 					where
 						potential = concat $ map f $ zip [0..(fromEnum (maxBound :: Culture))] $ iterate (snd.next) cultGen
 						f (i,g) = [p ! n | n <- take (cults ! i) (randomRs (0, V.length p-1) g)]
@@ -180,14 +188,15 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 getAJob :: People -> [Float] -> Person -> [Float] -> Person
 getAJob people chans person random
 
-	| profession person == None = person {profession = f [0..maxBound::Profession] random chans}
+	| profession person == None = person {profession = f [minBound::Profession .. maxBound::Profession] random chans}
 	| otherwise = person
 	where
 		i = (fromEnum.profession.(people .!).snd.parrents) person
 		chans' = (take i chans) ++ ((chans' !! i) + 0.2) : (drop (i+1) chans)
 
-		f :: [Profession] -> [Float] -> [Float] -> Int -> Profession
+		f :: [Profession] -> [Float] -> [Float] -> Profession
 		f prof random chans
+			| length prof < 3 = (head prof)
 			| (head chans) > (head random) = (head prof) 
 			| otherwise = f (tail prof) (tail random) (tail chans)
 

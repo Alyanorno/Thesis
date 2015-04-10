@@ -119,6 +119,6 @@ scaleDistanceFromCenter = (*) 1
 scaleDistanceFromCulturalCenter :: Float -> Float
 scaleDistanceFromCulturalCenter = (*) 1
 
-scaleConcentrationOfpeople :: Float -> Float
-scaleConcentrationOfpeople = (*) 1 --(2^) -- TODO: Test
+scaleConcentrationOfPeople :: Float -> Float
+scaleConcentrationOfPeople = (*) 1 --(2^) -- TODO: Test
 

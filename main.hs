@@ -38,7 +38,9 @@ main = do
 	print $ V.length g
 	print $ V.length g'
 	print $ V.length $ V.filter ((/=0).lover) g'
-	mapM_ print $ [[V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
+	let positions = [[V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
+	mapM_ print positions
+	withFile "test.txt" WriteMode (\h -> mapM_ (hPutStrLn h) $ map (\pos -> foldr (\s p -> s ++ " " ++ p) "" $ map show pos) positions)
 	putStrLn "---------------------"
 	print g'
 	putStrLn "---------------------"
@@ -61,14 +63,19 @@ death gen people = V.map f $ V.zip people' $ fromList $ take (V.length people') 
 		people' = V.filter ((<150).age) people
 		f :: (Person, Float) -> Person
 		f (p,r)
-			| a < 20 = if r < 10 ^ (log(0.70)*((fromIntegral timeStep)/10)) then p else p {alive = False}
-			| a < 30 = if r < 10 ^ (log(0.95)*((fromIntegral timeStep)/10)) then p else p {alive = False}
-			| a < 40 = if r < 10 ^ (log(0.95)*((fromIntegral timeStep)/10)) then p else p {alive = False}
-			| a < 50 = if r < 10 ^ (log(0.80)*((fromIntegral timeStep)/10)) then p else p {alive = False}
-			| a < 60 = if r < 10 ^ (log(0.70)*((fromIntegral timeStep)/10)) then p else p {alive = False}
-			| a < 70 = if r < 10 ^ (log(0.50)*((fromIntegral timeStep)/10)) then p else p {alive = False}
+			| a < 20 = if r < 10 .^ (log(0.70)*(timeStep'/10)) then p else p {alive = False}
+			| a < 30 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
+			| a < 40 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
+			| a < 50 = if r < 10 .^ (log(0.80)*(timeStep'/10)) then p else p {alive = False}
+			| a < 60 = if r < 10 .^ (log(0.70)*(timeStep'/10)) then p else p {alive = False}
+			| a < 70 = if r < 10 .^ (log(0.50)*(timeStep'/10)) then p else p {alive = False}
 			| otherwise = p {alive = False}
-			where a = age p
+			where a = age p; (.^) a b = (**) a b
+		timeStep' :: Float
+		timeStep' = fromIntegral timeStep
+
+toFloat :: Int -> Float
+toFloat x = fromIntegral x
 
 seed :: Int
 seed = 0
