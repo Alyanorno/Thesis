@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
 
 module Stuff where
 
@@ -16,13 +16,18 @@ import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
 import Control.Monad.ST
+import Control.Exception.Base (assert)
 
 
+{-# INLINE (<$>) #-}
 (<$>) = V.map
+{-# INLINE (<*>) #-}
 (<*>) = V.zipWith ($)
 
-(.&&.) f g a = (f a) && (g a)
-(.||.) f g a = (f a) || (g a)
+{-# INLINE (.&&.) #-}
+(.&&.) f g !a = (f a) && (g a)
+{-# INLINE (.||.) #-}
+(.||.) f g !a = (f a) || (g a)
 
 --data Culture = Culture { conservative :: Float, groupDivision :: Float }
 --type Cultures = [Culture]
@@ -54,6 +59,7 @@ data Person = Person {
 	position :: (Int, Int)
 	} deriving (Show)
 type People = Vector Person
+-- http://stackoverflow.com/questions/10866676/how-do-i-write-a-data-vector-unboxed-instance-in-haskell
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
@@ -83,6 +89,7 @@ instance RandomGen Xorshift where
 type RandomGenerator = Xorshift
 --type RandomGenerator = StdGen
 
+{-# INLINE (.!) #-}
 (.!) :: People -> ID -> Person
 (.!) people i = people ! (i - (id $ people ! 0))
 
@@ -108,17 +115,29 @@ start :: Int -> People
 start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [1..a] (cycle [Male, Female]) ] 
 
 mapRange :: Int
-mapRange = 20
+mapRange = 15
 
 timeStep :: Int
 timeStep = 10
 
+peopleFromStart :: Int
+peopleFromStart = 50
+
 scaleDistanceFromCenter :: Float -> Float
-scaleDistanceFromCenter = (*) 1
+scaleDistanceFromCenter = (*) (0-0.001)
 
 scaleDistanceFromCulturalCenter :: Float -> Float
 scaleDistanceFromCulturalCenter = (*) 1
 
 scaleConcentrationOfPeople :: Float -> Float
-scaleConcentrationOfPeople = (*) 1 --(2^) -- TODO: Test
+scaleConcentrationOfPeople = ((-) 0).((**) 2)
+
+-- TODO: Add values for static relations
+staticProfessionalRelations :: Vector (Vector Float)
+staticProfessionalRelations = let fl = fromList in fl [fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0]]
+
+boxFilter :: Vector Float -> Vector Float
+boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-mapRange) + (f $ i+mapRange) / 5)) list
+	where
+		access a i = if i < 0 || i >= V.length list then a else list ! i
 
