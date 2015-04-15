@@ -24,31 +24,36 @@ import Birth
 import Change
 
 
---main = do
---	mapM_ (\(index, name) ->
---		withFile name WriteMode (\h ->
---			let (g,_,_) = (generations seed 0 ((start 5), [(minBound :: Profession)..], [(minBound :: Culture)..])) !! index in
---			mapM_ (hPutStrLn h) $ V.map (\(x,y) (x',y') -> (fromInteger x) : ' ' : (fromInteger y) : '\n' : (fromInteger x') : (fromInteger y') : []) $ V.map (\p -> (position p, position $ g ! ((id $ g ! 0) + lover p))) $ V.filter ((/=0).lover) g)) $
---		zip [0..10] $ map (\i -> "data" ++ (fromInteger i) : ".txt") [0..10]
-
-
 main = do
+{-
+	n1 <- getLine
+	n2 <- getLine
+	let range = [read n1..read n2]
+	mapM_ (\(index, name) ->
+		withFile name WriteMode (\h -> do
+			let (g,m) = (generations seed 0 ((start peopleFromStart, V.empty))) !! index
+			let g' = V.filter alive g
+			let positions = [[V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
+			mapM_ (hPutStrLn h) $ map (foldr (\a list -> (show a) ++ " " ++ list) "") positions ))
+		$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
+-}
+
 	n <- getLine
-	let (g,m) = (generations seed 0 ((start peopleFromStart), fromList [])) !! read n
+	let (g,m) = (generations seed 0 ((start peopleFromStart), V.empty)) !! read n
 	let g' = V.filter alive g
 	putStrLn ""
 	print $ V.length g
 	print $ V.length g'
 	print $ V.length $ V.filter ((/=0).lover) g'
-	let positions = [[V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
-	mapM_ print positions
-	withFile "test.txt" WriteMode (\h -> mapM_ (hPutStrLn h) $ map (\pos -> foldr (\s p -> s ++ " " ++ p) "" $ map show pos) positions)
-	putStrLn "---------------------"
-	print $ V.length m
-	mapM_ print $ chunksOf mapRange $ map round $ V.toList m
-	putStrLn "---------------------"
---	print g'
+
+--	let positions = [[V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
+--	mapM_ print positions
+--	withFile "test.txt" WriteMode (\h -> mapM_ (hPutStrLn h) $ map (\pos -> foldr (\s p -> s ++ " " ++ p) "" $ map show pos) positions)
 --	putStrLn "---------------------"
+--	mapM_ print $ chunksOf mapRange $ map round $ V.toList m
+--	putStrLn "---------------------"
+--	print g'
+	putStrLn "---------------------"
 	main
 
 professions = [(minBound :: Profession)..]
@@ -74,12 +79,12 @@ death gen people = V.map f $ V.zip people' $ r
 		f :: (Person, Float) -> Person
 		f (p,r)
 			-- 0.7 0.95 0.95 0.80 0.70 0.50
-			| a < 20 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False} 
+			| a < 20 = if r < 10 .^ (log(0.70)*(timeStep'/10)) then p else p {alive = False} 
 			| a < 30 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
 			| a < 40 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
-			| a < 50 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
-			| a < 60 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
-			| a < 70 = if r < 10 .^ (log(0.95)*(timeStep'/10)) then p else p {alive = False}
+			| a < 50 = if r < 10 .^ (log(0.80)*(timeStep'/10)) then p else p {alive = False}
+			| a < 60 = if r < 10 .^ (log(0.70)*(timeStep'/10)) then p else p {alive = False}
+			| a < 70 = if r < 10 .^ (log(0.50)*(timeStep'/10)) then p else p {alive = False}
 			| otherwise = p {alive = False}
 			where a = age p; (.^) a b = (**) a b
 		timeStep' :: Float

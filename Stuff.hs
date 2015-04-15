@@ -115,7 +115,7 @@ start :: Int -> People
 start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [1..a] (cycle [Male, Female]) ] 
 
 mapRange :: Int
-mapRange = 15
+mapRange = 50
 
 timeStep :: Int
 timeStep = 10

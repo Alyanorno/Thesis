@@ -146,7 +146,8 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 		(_,gen') = next gen
 
 		m :: Int
-		m = match person people (f 0) (f 1) (f 2) (f 3) (f 4) (f 5)
+		-- m = match person people (f 0) (f 1) (f 2) (f 3) (f 4) (f 5)
+		m = match person (V.filter (alive .&&. ((==0).lover)) people) (f 0) (f 1) (f 2) (f 3) (f 4) (f 5)
 
 		f :: Int -> PureMT
 		f 0 = pureMT $ fromIntegral $ fromXorshift gen
@@ -155,6 +156,7 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 
 		match :: Person -> People -> PureMT -> PureMT -> PureMT -> PureMT -> PureMT -> PureMT -> ID
 		match person people gen randomGen profGen cultGen sameProfGen sameCultGen
+			| V.length people == 0 = 0
 			| null potentialMates = 0
 			| otherwise = id $ potentialMates !! r
 			where
@@ -162,7 +164,7 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 				(r,_) = randomR (0, length potentialMates-1) gen
 
 				-- TODO: Make faster, takes 11% of program time and 7.6% of allocation
-				potentialMates = filter (((/=gender person).gender) .&&. ((==0).lover) .&&. (((==) (parrents person)).parrents)) $ potentialRandom ++ potentialProfessional ++ potentialSameProfessional ++ potentialCulture ++ potentialSameCulture
+				potentialMates = filter (((/=gender person).gender) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents) .||. ((==(0,0)).parrents))) $ potentialRandom ++ potentialProfessional ++ potentialSameProfessional ++ potentialCulture ++ potentialSameCulture
 
 				potentialRandom = map (people !) $ randomInts timeStep (V.length people-1) randomGen -- take timeStep $ (randomRs (0, V.length people-1) randomGen)
 				potentialSameProfessional = map (prof !) $ randomInts timeStep (V.length prof-1) sameProfGen -- take timeStep $ randomRs (0, V.length prof-1) sameProfGen
@@ -226,7 +228,7 @@ getAHome range maps person parrentPosition gen
 		theHome
 			| null possibleHomes || parrentPosition == (0,0) = person
 			| otherwise = person {position = home}
-			where !home = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range)) (map ! (x'+y'*range))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
+			where home = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range)) (map ! (x'+y'*range))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
 		map = maps ! (fromEnum $ culture person)
 		possibleHomes = [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
 		range' = 2

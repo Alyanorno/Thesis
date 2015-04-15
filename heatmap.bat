@@ -1,3 +1,2 @@
-@echo off
-"P:\Program Files\gnuplot\bin\wgnuplot.exe" heatmap.cfg
-"heatmap.png"
+REM @echo off
+"P:\Program Files\gnuplot\bin\gnuplot.exe" "data\heatmap.cfg"
