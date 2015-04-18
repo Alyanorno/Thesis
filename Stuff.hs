@@ -3,9 +3,15 @@
 module Stuff where
 
 import Prelude hiding (id)
+import GHC.Float
 
-import Data.Vector ((!), fromList, toList, Vector, snoc)
-import qualified Data.Vector as V
+import Data.Vector.Unboxed ((!), toList, Vector, snoc)
+import qualified Data.Vector as VB
+import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Mutable as MB
+import qualified Data.Vector.Unboxed.Mutable as M
+
+import qualified Data.Array.Unboxed as A
 
 import Data.List.Split (chunksOf)
 import qualified Data.List as L
@@ -15,14 +21,15 @@ import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
+import System.Random.Mersenne.Pure64 as R
 import Control.Monad.ST
 import Control.Exception.Base (assert)
 
 
-{-# INLINE (<$>) #-}
-(<$>) = V.map
-{-# INLINE (<*>) #-}
-(<*>) = V.zipWith ($)
+--{-# INLINE (<$>) #-}
+--(<$>) = V.map
+--{-# INLINE (<*>) #-}
+--(<*>) = V.zipWith ($)
 
 {-# INLINE (.&&.) #-}
 (.&&.) f g !a = (f a) && (g a)
@@ -58,15 +65,13 @@ data Person = Person {
 	-- Below a certain age this attribute is ignored
 	position :: (Int, Int)
 	} deriving (Show)
-type People = Vector Person
+type People = VB.Vector Person
 -- http://stackoverflow.com/questions/10866676/how-do-i-write-a-data-vector-unboxed-instance-in-haskell
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
 
 type World = ( People, Professions, Cultures )
-
-
 
 
 newtype Xorshift = Xorshift {fromXorshift :: Int64} deriving (Show, Eq, Enum, Bounded)
@@ -89,21 +94,45 @@ instance RandomGen Xorshift where
 type RandomGenerator = Xorshift
 --type RandomGenerator = StdGen
 
+{-# INLINE (&!) #-}
+(&!) :: People -> ID -> Person
+(&!) people i = people .! (i - (id $ VB.head people))
+
+safeAccess :: People -> Int -> (Bool, Person)
+safeAccess people i = let ix = i - (id $ VB.head people) in if i < id (VB.head people) then (False, VB.head people) else (True, people .! ix)
+
 {-# INLINE (.!) #-}
-(.!) :: People -> ID -> Person
-(.!) people i = people ! (i - (id $ people ! 0))
+(.!) :: VB.Vector a -> Int -> a
+(.!) v i = v VB.! i
 
 --vsplitPlaces :: (Eq e) => Vector Int -> Vector e -> Vector (Vector e)
 --vsplitPlaces places list
 --	| V.length places == 0 = (fromList [])
 --	| otherwise = snoc (vsplitPlaces (V.tail places) (V.drop (V.head places) list)) (V.take (V.head places) list)
 
---randomVectorsOf n size gen range = generate size (\i -> generate n $ xor gen $ step $ fromInteger $ i * n)
+--randomVectorsOf :: Int -> Int -> RandomGenerator -> (Float, Float) -> VB.Vector (A.UArray Int Float)
+--randomVectorsOf n size gen range = VB.generate size (\i -> A.listArray (0, n) (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)))
+--randomVectorsOf_ :: Int -> Int -> RandomGenerator -> (Int, Int) -> VB.Vector (A.UArray Int Int)
+--randomVectorsOf_ n size gen range = VB.generate size (\i -> A.listArray (0, n) (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)))
+randomVector :: Int -> PureMT -> Vector Int64
+randomVector n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
+	where
+		fill v i g
+			| i < n = do
+				(x, g') <- return $ R.randomInt64 g
+				M.write v i x
+				fill v (i+1) g'
+			| otherwise = return ()
+randomVector_ :: Int -> PureMT -> Vector Double
+randomVector_ n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
+	where
+		fill v i g
+			| i < n = do
+				(x, g') <- return $ R.randomDouble g
+				M.write v i x
+				fill v (i+1) g'
+			| otherwise = return ()
 
-randomVectorsOf :: Int -> Int -> RandomGenerator -> (Float, Float) -> Vector [Float]
-randomVectorsOf n size gen range = V.generate size (\i -> take n (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)) :: [Float])
-randomVectorsOf_ :: Int -> Int -> RandomGenerator -> (Int, Int) -> Vector [Int]
-randomVectorsOf_ n size gen range = V.generate size (\i -> take n (randomRs range (Xorshift $ xor (fromXorshift gen) $ fromIntegral i)) :: [Int])
 
 rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
@@ -111,20 +140,26 @@ rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromInt
 rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
+-- TODO: More even spread of age
 start :: Int -> People
-start a = fromList [Person True i 20 g None Endorphi 0 (0,0) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,g) <- zip [1..a] (cycle [Male, Female]) ] 
+start a = VB.fromList [Person True i age g prof cult (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [1..1+a*2] $ zip (cycle [Male, Female]) $ zip (cycle [minBound::Profession .. maxBound::Profession]) (cycle [minBound::Culture .. maxBound::Culture]), let age = f i a] -- if i >= a then 20 else 60]
+	where f i a
+		| i >= float2Int ((int2Float) a * 1.5) = 10
+		| i >= a = 20
+		| i >= a `div` 2 = 30
+		| otherwise = 60
 
 mapRange :: Int
 mapRange = 50
 
 timeStep :: Int
-timeStep = 10
+timeStep = 2 -- If 1 they will never reproduce :P (birth rounds down)
 
 peopleFromStart :: Int
 peopleFromStart = 50
 
 scaleDistanceFromCenter :: Float -> Float
-scaleDistanceFromCenter = (*) (0-0.001)
+scaleDistanceFromCenter = (*) (0-0.1) --0.001
 
 scaleDistanceFromCulturalCenter :: Float -> Float
 scaleDistanceFromCulturalCenter = (*) 1
@@ -133,8 +168,8 @@ scaleConcentrationOfPeople :: Float -> Float
 scaleConcentrationOfPeople = ((-) 0).((**) 2)
 
 -- TODO: Add values for static relations
-staticProfessionalRelations :: Vector (Vector Float)
-staticProfessionalRelations = let fl = fromList in fl [fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0]]
+staticProfessionalRelations :: VB.Vector (Vector Float)
+staticProfessionalRelations = let fl = V.fromList in VB.fromList [fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0], fl [0,0,0,0]]
 
 boxFilter :: Vector Float -> Vector Float
 boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-mapRange) + (f $ i+mapRange) / 5)) list

@@ -7,10 +7,15 @@ module Birth (birth) where
 
 import Prelude hiding (id)
 
-import Data.Vector ((!), fromList, toList, Vector, empty)
-import qualified Data.Vector as V
+import Data.Vector.Unboxed ((!), toList, Vector, snoc)
+import qualified Data.Vector as VB
+import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Mutable as MB
+import qualified Data.Vector.Unboxed.Mutable as M
 
-import Data.List.Split (chunksOf, splitPlaces)
+import qualified Data.Array.Unboxed as A
+
+import Data.List.Split (splitPlaces)
 --import qualified Data.List as L
 
 import System.Random
@@ -18,49 +23,48 @@ import System.Random
 import Stuff
 import Change
 
---_and conditions x = and $ map ($ x) conditions
---_or conditions x = or $ map ($ x) conditions
 
 
-birth :: Int -> RandomGenerator -> People -> People
-birth iteration gen people = p V.++ (fromList $ concat babies)
+birth :: RandomGenerator -> People -> People
+birth gen people = p VB.++ (VB.fromList $ concat babies)
 	where
---		p = V.accum (\p b -> p {children = (children p) V.++ (fromList $ b)}) people $ foldr f [] babies
---			where
---				f :: [Person] -> [(ID, [ID])] -> [(ID, [ID])]
---				f n list = list ++ [(p1, id'), (p2, id')]
---					where 
---						(p1, p2) = (parrents.head) n
---						id' = map id n
-
-		p = V.accum (\p b -> p {children = (children p) V.++ (fromList $ b)}) people $ concat $ map f babies
+		p = VB.accum (\p' b -> p' {children = (children p') V.++ (V.fromList $ b)}) people $ concat $ map f babies
 			where
 				f :: [Person] -> [(ID, [ID])]
-				f p = [(p1-offset, b), (p2-offset, b)]
+				f person = [(p1-offset, b), (p2-offset, b)]
 					where 
-						(p1, p2) = (parrents.head) p
-						offset = id $ people ! 0
-						b = map id p
+						(p1, p2) = (parrents.head) person
+						offset = id $ VB.head people
+						b = map id person
 
 		babies :: [[Person]]
 		babies = filter (not.null) $ zipWith f babyMakers $ splitPlaces numberOfBabies ids
 			where
 				f :: Person -> [Int] -> [Person]
-				f mother ids
-					| null ids = []
-					| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids
+				f mother ids'
+					| null ids' = []
+					| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids'
 
 		babyMakers :: [Person]
-		babyMakers = toList $ V.filter (((==Female).gender) .&&. ((/=0).lover) .&&. ((<41).age) .&&. ((/=(0,0)).position) .&&. alive) people 
+--		babyMakers = VB.toList $ VB.filter (\a -> f (safeAccess p (lover a)) a) people
+		babyMakers = VB.toList $ VB.filter conditions people
+			where 
+				f :: (Bool, Person) -> Person -> Bool
+				f (safe, l) a
+					| not safe || not (alive l) = False
+					| otherwise = conditions a
+
+				conditions :: Person -> Bool
+				conditions a = (((==Female).gender) .&&. ((/=0).lover) .&&. ((<41).age) .&&. alive) a
 
 		numberOfBabies :: [Int]
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
 
 		ids = [start..start + foldr1 (+) numberOfBabies]
-		start = ((+1).id.V.last) people
+		start = ((+1).id.VB.last) people
 
 
 makeBaby :: ID -> (ID, ID) -> Culture -> Person
-makeBaby id parrents culture = Person True id 0 (toEnum $ mod id 2) None culture 0 parrents empty [] (0,0)
+makeBaby id' parrents' culture' = Person True id' 0 (toEnum $ mod id' 2) None culture' 0 parrents' V.empty [] (0,0)
 
 
