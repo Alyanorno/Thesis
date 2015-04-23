@@ -37,7 +37,7 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 		aged p = VB.map (\a -> a { age = age a + timeStep }) p
 
 		love :: People -> People
-		love p = createLovers gen p professionalBuckets professionalRelations cultureBuckets culturalRelations
+		love p = createLovers gen p (VB.filter alive p) professionalBuckets professionalRelations cultureBuckets culturalRelations
 
 		job :: People -> People
 		job p = VB.imap (\i a -> getAJob people chans a (V.slice (i*off) off random)) p
@@ -74,14 +74,9 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 		maps = VB.map perCulture $ VB.fromList [0..(fromEnum (maxBound :: Culture))]
 			where
 				perCulture :: Int -> Vector Float
-				perCulture culture = (distanceFromCenter .+. concentrationOfPeopleMap) V.// mountain -- (distanceFromCulturalCenter ! culture) .+. distanceFromCenter .+. concentrationOfPeopleMap .+. (culturalMap ! culture)
-					where
-						(.+.) = V.zipWith (+)
-						mountain = zip (map fromRelativePosition mountainPositions) (repeat (0-100))
-						mountainPositions = [(x,y) | x <- [0.2,0.21..0.4], y <- [0.2,0.21..0.4]]
-						fromRelativePosition :: (Float, Float) -> Int
-						fromRelativePosition (x,y) = (float2Int (x * m)) + (float2Int (y * m * m))
-							where m = int2Float mapRange
+				perCulture culture = distanceFromCenter .+. concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture) .+. staticTerrainMap
+--				perCulture culture = culturalMap .! culture
+					where (.+.) = V.zipWith (+)
 
 --				distanceFromCulturalCenter :: Vector (Vector Float)
 --				distanceFromCulturalCenter = V.map (V.map scaleDistanceFromCulturalCenter) $ V.map (\i -> let culturalCenter = V.map position $ cultureBuckets ! i; c = (\(x,y) -> (div x (V.length culturalCenter), div y (V.length culturalCenter))) $ V.foldr1 (\(x,y) (x',y') -> (x+x',y+y')) culturalCenter in V.map ((distanceTo $ toFloat c).toFloat) positionMap) $ fromList [0..(fromEnum (maxBound :: Culture))]
@@ -89,9 +84,9 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 				distanceFromCulturalCenter = VB.map (V.map scaleDistanceFromCulturalCenter) $
 					VB.map (\i -> let
 						peoplePos = V.convert $ VB.map position $ cultureBuckets .! i
-						average (x,y) = (div x (V.length peoplePos), div y (V.length peoplePos))
-						culturalCenter = average $ V.foldr1 (\(x,y) (x',y') -> (x+x',y+y')) peoplePos
-						in V.map ((distanceTo $ toFloat culturalCenter).toFloat) positionMap)
+						average (x,y) = let l = V.length peoplePos in if l == 0 then (0,0) else ((int2Float x) / (int2Float $ V.length peoplePos), (int2Float y) / (int2Float $ V.length peoplePos))
+						culturalCenter = average $ V.foldr (\(x,y) (x',y') -> (x+x',y+y')) (0,0) peoplePos
+						in V.map ((distanceTo $ culturalCenter).toFloat) positionMap)
 						$ VB.fromList [0..(fromEnum (maxBound :: Culture))]
 
 				distanceFromCenter :: Vector Float
@@ -107,8 +102,10 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 				concentrationOfPeopleMap = V.convert $ VB.map (scaleConcentrationOfPeople.fromIntegral.VB.length) peopleMap
 
 				culturalMap :: VB.Vector (Vector Float)
-				culturalMap = VB.map (\i -> VB.convert $ VB.map (\p -> VB.sum $ VB.map (relationsTo i) p) peopleMap) $ VB.fromList [0..(fromEnum (maxBound :: Culture))]
+				culturalMap = VB.map (\i -> boxFilter $ VB.convert $ VB.map (scaleCulturalMap.(f i)) peopleMap) $ VB.fromList [0..(fromEnum (maxBound :: Culture))]
 					where 
+						f i p = let m = VB.map (relationsTo i) p; l = (VB.length m) in if l == 0 then 0 else (VB.sum m) / int2Float l
+
 						relationsTo :: Int -> Person -> Float
 						relationsTo i p = (culturalRelations .! i) ! ((fromIntegral.fromEnum.culture) p)
 
@@ -140,8 +137,8 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 		culturalRelations = relationsBetween gen people' numberCultures culture cultureBuckets sampleSize
 
 
-createLovers :: RandomGenerator -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> People
-createLovers gen people professionals professionalRelations culturals culturalRelations = VB.modify (\v -> loop 0 v gen) people
+createLovers :: RandomGenerator -> People -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> People
+createLovers gen people alivePeople professionals professionalRelations culturals culturalRelations = VB.modify (\v -> loop 0 v gen) people
 	where loop i v gen
 		| i >= VB.length people = return ()
 		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive) .||. ((>40).age)) person = loop (i+1) v gen
@@ -185,7 +182,7 @@ createLovers gen people professionals professionalRelations culturals culturalRe
 				potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture
 				conditions !x = (((/=gender person).gender) .&&. ((<50).age) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents))) x
 
-				potentialRandom = g (VB.filter (((<40).age) .&&. ((/=gender person).gender) .&&. alive) people) (timeStep*2) randGen
+				potentialRandom = g alivePeople (timeStep*2) randGen
 				potentialSameProfessional = g prof (timeStep*2) sameProfGen
 				potentialSameCulture = g cult (timeStep*2) sameCultGen
 
@@ -258,10 +255,11 @@ getAHome range maps person parrentPosition gen
 		theHome
 			| null possibleHomes || parrentPosition == (0,0) = person
 			| otherwise = person {position = home}
-			where home = L.maximumBy (\(x,y) (x',y') -> compare (map ! (x+y*range)) (map ! (x'+y'*range))) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
+			where home = L.maximumBy (\a b -> compare (valueAt a) (valueAt b)) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
 		map = maps .! (fromEnum $ culture person)
-		possibleHomes = [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
-		range' = 2
+		possibleHomes = filter ((/= infinity).valueAt)  [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
+		range' = 3
+		valueAt (x,y) = map ! (x+y*range)
 
 
 
