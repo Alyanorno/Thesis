@@ -23,21 +23,27 @@ import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
 import System.Random.Mersenne.Pure64 as R
-import Control.Monad (liftM2)
+import Control.DeepSeq
+import Control.Monad
+import Control.Monad.Primitive
+import Control.Monad.Par
 import Control.Monad.ST
+--import Control.Monad.Loop.ForEach
+import Control.Parallel
+import Control.Parallel.Strategies
 import Stuff
 
 
 
 
 change :: RandomGenerator -> People -> (People, Vector Float)
-change gen people' = ((home.job.love.aged) people', maps .! 0)
+change gen people' = ((home.job.relations.aged) people', maps .! 0)
 	where
 		aged :: People -> People
 		aged p = VB.map (\a -> a { age = age a + timeStep }) p
 
-		love :: People -> People
-		love p = createLovers gen p (VB.filter alive p) professionalBuckets professionalRelations cultureBuckets culturalRelations
+		relations :: People -> People
+		relations p = createRelations gen p (VB.filter alive p) professionalBuckets professionalRelations cultureBuckets culturalRelations
 
 		job :: People -> People
 		job p = VB.imap (\i a -> getAJob people chans a (V.slice (i*off) off random)) p
@@ -136,98 +142,202 @@ change gen people' = ((home.job.love.aged) people', maps .! 0)
 		culturalRelations :: VB.Vector (Vector Float)
 		culturalRelations = relationsBetween gen people' numberCultures culture cultureBuckets sampleSize
 
+{-instance NFData a => NFData (MB.MVector s a) where
+    rnf (MB.MVector i n arr) = unsafeInlineST $ force i
+        where
+          force !ix | ix < n    = do x <- readArray arr ix
+                                     rnf x `seq` force (ix+1)
+                    | otherwise = return () -}
+--instance NFData a => NFData (ST s ()) where
+--	rnf (ST s()) = RealWorld s
 
-createLovers :: RandomGenerator -> People -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> People
-createLovers gen people alivePeople professionals professionalRelations culturals culturalRelations = VB.modify (\v -> loop 0 v gen) people
-	where loop i v gen
+createRelations :: RandomGenerator -> People -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> People
+createRelations gen people alivePeople professionals professionalRelations culturals culturalRelations = VB.modify (\v -> applyMatches 0 v matches) people
+	where
+{-	loopF :: MB.MVector (PrimState (ST s)) Person -> ST s ()
+	loopF v = do
+		matches <- runPar $ do
+			let s = VB.length people
+--		t1 <- spawn (return $ stToIO(loop 0 (s `div` 2)  v))
+--		t2 <- spawn (return (loop (s `div` 2) s v))
+--		t <- get t1
+--		t <- get t2
+
+			t1 <- spawnP (match (people .! 0) (pureMT $ fromIntegral $ gens ! 0))
+			t1' <- get t1
+			return (applyMatch 0 v t1')-}
+
+	applyMatches :: Int -> MB.MVector (PrimState (ST s)) Person -> [(ID, Vector ID)] -> ST s ()
+	applyMatches i v matches	
+--		| i == 0 = let peopleSize = VB.length people in (loop (i+1) (peopleSize `div` 2) v) `par` (loop (peopleSize `div` 2) peopleSize v) `pseq` (loop (peopleSize `div` 2) peopleSize v)
 		| i >= VB.length people = return ()
-		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive) .||. ((>40).age)) person = loop (i+1) v gen
-		| m == 0 = loop (i+1) v gen
-		| otherwise = do
+		| (not.alive) person = next
+--		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive) .||. ((>40).age)) person = next gen
+		| (((==Female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person && fst m /= 0 = do
 			let start = id $ VB.head people;
-			i' <- (return $ m - start);
+			i' <- (return $ (fst m) - start);
 
 			p' <- MB.read v i';
 			MB.write v i' (p' {lover = start + i});
 
+--			p <- next `par` (loop (i+200) max v) `pseq` (MB.read v i)
 			p <- MB.read v i;
-			MB.write v i (p {lover = m});
-
-			loop (i+1) v gen'
+			if V.length (friends p) + V.length (snd m) < 200 then do
+				MB.write v i (p {lover = fst m, friends = (friends p) V.++ (snd m)});
+			else do
+				MB.write v i (p {lover = fst m, friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
+			next
+--		| V.null (snd m) = next
+		| otherwise = do
+			p <- MB.read v i;
+			if V.length (friends p) + V.length (snd m) < 200 then do
+				MB.write v i (p {friends = (friends p) V.++ (snd m)});
+			else do
+				MB.write v i (p {friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
+			next
 		where
+		next = applyMatches (i+1) v $ tail matches
+
 		person = people .! i
 
-		(_,gen') = next gen
+		gen = gens ! i
+
+		m :: (ID, Vector ID)
+		m = head matches
+--		m = match person pureGen
+--			where pureGen = pureMT $ fromIntegral $ gen
+
+	gens = (V.iterateN (VB.length people) (fromXorshift.step.Xorshift) (fromXorshift gen))
+
+	matches :: [(ID, Vector ID)]
+	matches = runPar $ do
+		let s = VB.length people
+		let offset = s `div` 4
+
+		t1 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*0..offset*1-1])
+		t2 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*1..offset*2-1])
+		t3 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*2..offset*3-1])
+		t4 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*3..s-1])
+		t1' <- get t1
+		t2' <- get t2
+		t3' <- get t3
+		t4' <- get t4
+		return (t1' ++ t2' ++ t3' ++ t4')
+
+	match :: Person -> PureMT -> (ID, Vector ID)
+	match person gen
+--		| VB.length people == 0 = 0
+		| V.null potentialMates = (0, V.empty)
+		| otherwise = (potentialMates ! r, V.map (potentialMates !) $ randomInts (timeStep*5) (V.length potentialMates-1) gen)
+		where
+			r :: Int
+			(r,_) = randomR (0, V.length potentialMates-1) gen
+
+			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture
+--			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ ((potentialProfessional `par` potentialCulture) `pseq` (potentialProfessional V.++ potentialCulture))
+{-			potentialMates = runPar $ do
+				t1 <- spawnP potentialProfessional
+				t2 <- spawnP potentialCulture
+				t3 <- spawnP potentialSameProfessional
+				t4 <- spawnP potentialSameCulture
+				t5 <- spawnP potentialRandom
+				t1' <- get t1
+				t2' <- get t2
+				t3' <- get t3
+				t4' <- get t4
+				t5' <- get t5
+				return $ t1' V.++ t2' V.++ t3' V.++ t4' V.++ t5' -}
+
+			{-# INLINE conditions #-}
+			conditions !x = (((/=gender person).gender) .&&. ((<50).age) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents))) x
+
+			randomNum = (timeStep*2, 0)
+			sameProfNum = (timeStep*2, offset randomNum)
+			sameCultNum = (timeStep*2, offset sameProfNum)
+			profNum = (timeStep, offset sameCultNum)
+			cultNum = (timeStep, offset profNum)
+			profNumInternal = (sizeProfessionals, offset cultNum)
+			cultNumInternal = (sizeCulturals, offset profNumInternal)
+
+			offset (a,b) = a + b
+
+			sizeProfessionals = V.sum $ profs
+			sizeCulturals = V.sum $ cults
+
+			potentialRandom = g alivePeople randomNum
+			potentialSameProfessional = g prof sameProfNum
+			potentialSameCulture = g cult sameCultNum
+
+			{-# INLINE g #-}
+			g v s = V.map (id.(v .!)) $ V.filter (conditions.(v .!)) $ randomInts_ (VB.length v-1) s
 
 
-		m :: Int
-		-- m = match person people (f 0) (f 1) (f 2) (f 3) (f 4) (f 5)
-		m = match person people (f 0) (f 1) (f 2) (f 3) (f 4) (f 5) -- $ pureMT $ fromIntegral $ fromXorshift gen
+			potentialProfessional :: Vector ID
+			potentialProfessional
+				| V.null potential = V.empty
+				| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts_ (V.length potential-1) profNum
+				where
+					potential :: Vector Int
+					potential = f 0 V.empty $ snd profNumInternal
+					f :: Int -> Vector Int -> Int -> Vector Int
+					f i v offset
+						| i >= VB.length professionals = v
+						| VB.null p || profs ! i <= 0 = v V.++ (f (i+1) v offset')
+						| otherwise = v V.++ result V.++ (f (i+1) v offset')
+						where
+							result :: Vector Int
+							result = V.map (id.(p .!)) $ randomInts_ (VB.length p-1) ((profs ! i), offset)
+							offset' = offset + profs ! i
+							p = professionals .! i
 
-		f :: Int -> PureMT
-		f i = pureMT $ fromIntegral $ fromXorshift $ g i
-			where
-				g 0 = gen
-				g i = let (_,n) = next $ g (i-1) in n
+			profs = V.map (floor.(* (2 * int2Float timeStep))) $ professionalRelations .! (fromEnum $ profession person)
 
-		match :: Person -> People -> PureMT -> PureMT -> PureMT -> PureMT -> PureMT -> PureMT -> ID
-		match person people gen randGen sameProfGen sameCultGen profGen cultGen
-			| VB.length people == 0 = 0
-			| V.null potentialMates = 0
-			| otherwise = potentialMates ! r
-			where
-				r :: Int
-				(r,_) = randomR (0, V.length potentialMates-1) gen
+--			potentialCulture :: Vector Int
+--			potentialCulture
+--				| V.null potential = V.empty
+--				| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts_ (V.length potential-1) cultNum
+--				where
+--					potential :: Vector Int
+--					potential = V.ifoldr f V.empty $ V.iterateN (fromEnum (maxBound::Culture)) (fromXorshift.step.Xorshift) $ fst $ R.randomInt64 gen
+--					f :: Int -> Int64 -> Vector Int -> Vector Int
+--					f i g v
+--						| VB.null p = v
+--						| otherwise = (V.++) v $ V.map (id.(p .!)) $ randomInts (cults ! i) (VB.length p-1) $ pureMT $ fromIntegral g
+--						where p = culturals .! i
+			potentialCulture :: Vector Int
+			potentialCulture
+				| V.null potential = V.empty
+				| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts_ (V.length potential-1) cultNum
+				where
+					potential :: Vector Int
+					potential = f 0 V.empty $ snd cultNumInternal
+					f :: Int -> Vector Int -> Int -> Vector Int
+					f i v offset
+						| i >= VB.length culturals = v
+						| VB.null p || cults ! i <= 0 = v V.++ (f (i+1) v offset')
+						| otherwise = v V.++ result V.++ (f (i+1) v offset')
+						where
+							result :: Vector Int
+							result = V.map (id.(p .!)) $ randomInts_ (VB.length p-1) ((cults ! i), offset)
+							offset' = offset + cults ! i
+							p = culturals .! i
 
-				potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture
-				conditions !x = (((/=gender person).gender) .&&. ((<50).age) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents))) x
-
-				potentialRandom = g alivePeople (timeStep*2) randGen
-				potentialSameProfessional = g prof (timeStep*2) sameProfGen
-				potentialSameCulture = g cult (timeStep*2) sameCultGen
-
-				g v s g = V.map (id.(v .!)) $ V.filter (conditions.(v .!)) $ randomInts s (VB.length v-1) g
-
-
-				potentialProfessional :: Vector ID
-				potentialProfessional
-					| V.null potential = V.empty
-					| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts timeStep (V.length potential-1) profGen
-					where
-						potential :: Vector Int
-						potential = convert $ VB.foldr1 (VB.++) $ VB.imap f $ VB.fromList $ take (fromEnum (maxBound::Profession)) $ map fromXorshift $ iterate step $ Xorshift $ fst $ R.randomInt64 gen
-						f :: Int -> Int64 -> VB.Vector Int
-						f i g
-							| VB.null p = VB.empty
-							| otherwise = VB.map (id.(p .!)) $ convert $ randomInts (profs ! i) (VB.length p-1) $ pureMT $ fromIntegral g
-							where p = professionals .! i
-
-						profs = V.map (floor.(*10)) $ professionalRelations .! (fromEnum $ profession person)
-
-				potentialCulture :: Vector Int
-				potentialCulture
-					| V.null potential = V.empty
-					| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts timeStep (V.length potential-1) gen
-					where
-						potential :: Vector Int
-						potential = convert $ VB.foldr1 (VB.++) $ VB.imap f $ VB.fromList $ take (fromEnum (maxBound::Culture)) $ map fromXorshift $ iterate step $ Xorshift $ fst $ R.randomInt64 gen
-						f :: Int -> Int64 -> VB.Vector Int
-						f i g
-							| VB.null p = VB.empty
-							| otherwise = VB.map (id.(p .!)) $ convert $ randomInts (cults ! i) (VB.length p-1) $ pureMT $ fromIntegral g
-							where p = culturals .! i
-
-						cults = V.map (floor.(*10)) $ culturalRelations .! (fromEnum $ culture person)
+			cults = V.map (floor.(* (2 * int2Float timeStep))) $ culturalRelations .! (fromEnum $ culture person)
 
 
-				randomInts :: Int -> Int -> PureMT -> V.Vector Int
-				randomInts size max gen = V.map (floor.(* (int2Float max)).double2Float) $ randomVector_ size gen
+			randomInts :: Int -> Int -> PureMT -> V.Vector Int
+			randomInts size max gen = V.map (floor.(* (int2Float max)).double2Float) $ randomVector_ size gen
 
-				prof :: VB.Vector Person
-				prof = professionals .! (fromEnum $ profession person)
+			randomInts_ :: Int -> (Int, Int) -> V.Vector Int
+			randomInts_ max (size, from) = V.map (floor.(* (int2Float max)).double2Float) $ V.slice from size random
 
-				cult :: VB.Vector Person
-				cult = culturals .! (fromEnum $ culture person)
+			random = randomVector_ (offset cultNumInternal) gen
+
+			prof :: VB.Vector Person
+			prof = professionals .! (fromEnum $ profession person)
+
+			cult :: VB.Vector Person
+			cult = culturals .! (fromEnum $ culture person)
 
 --getAJob :: (A.IArray a Float, A.Ix i, Num i) => People -> [Float] -> Person -> a i e -> Person
 getAJob :: People -> [Double] -> Person -> Vector Double -> Person
@@ -253,7 +363,9 @@ getAHome range maps person parrentPosition gen
 	| otherwise = person
 	where
 		theHome
-			| null possibleHomes || parrentPosition == (0,0) = person
+--			| null possibleHomes || parrentPosition == (0,0) = person
+			| parrentPosition == (0,0) = person
+			| null possibleHomes = person {position = parrentPosition}
 			| otherwise = person {position = home}
 			where home = L.maximumBy (\a b -> compare (valueAt a) (valueAt b)) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]
 		map = maps .! (fromEnum $ culture person)

@@ -36,42 +36,48 @@ import Control.Exception.Base (assert)
 {-# INLINE (.||.) #-}
 (.||.) f g !a = (f a) || (g a)
 
---data Culture = Culture { conservative :: Float, groupDivision :: Float }
---type Cultures = [Culture]
 data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
 type Cultures = [Culture]
+--newtype Culture = Culture Int deriving (Show, Eq, Enum)
+--(brahmatic:endorphi:_) = map Culture [0..]
+--instance Bounded Culture where
+--	minBound = brahmatic
+--	maxBound = endorphi
 
---data Goods = Goods { name :: String, needs :: [Goods], timePerUnit :: Int }
---data Proffesion = Proffesion { makes :: [Goods] }
 data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 type Professions = [Profession]
+--newtype Profession = Profession Int deriving (Show, Eq, Enum)
+--(farmer:administrator:beggar:none:_) = map Profession [0..]
+--instance Bounded Profession where
+--	minBound = farmer
+--	maxBound = none
+
 
 type ID = Int
 data Gender = Male | Female deriving (Show, Eq, Enum)
--- data Proffesion = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
+--newtype Gender = Gender Int deriving (Show, Eq, Enum)
+--(male:female:_) = map Gender [1..]
 data Person = Person {
-	alive :: Bool,
+	alive :: {-# UNPACK #-} !Bool,
 	-- Unique number used to identifiy person, people are always stored in order
-	id :: ID,
-	age :: Int,
-	gender :: Gender,
-	profession :: Profession,
-	culture :: Culture,
+	id :: {-# UNPACK #-} !ID,
+	age :: {-# UNPACK #-} !Int,
+	gender :: {-# UNPACK #-} !Gender,
+	profession :: {-# UNPACK #-} !Profession,
+	culture :: {-# UNPACK #-} !Culture,
 	-- A zero means no lover
-	lover :: ID,
-	parrents :: (ID, ID),
-	children :: Vector ID,
-	friends :: [ID],
+	lover :: {-# UNPACK #-} !ID,
+	parrents :: {-# UNPACK #-} !(ID, ID),
+	children :: {-# UNPACK #-} !(Vector ID),
+	friends :: {-# UNPACK #-} !(Vector ID),
 	-- Below a certain age this attribute is ignored
-	position :: (Int, Int)
+	position :: {-# UNPACK #-} !(Int, Int)
 	} deriving (Show)
 type People = VB.Vector Person
 -- http://stackoverflow.com/questions/10866676/how-do-i-write-a-data-vector-unboxed-instance-in-haskell
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
-
-type World = ( People, Professions, Cultures )
 
 
 newtype Xorshift = Xorshift {fromXorshift :: Int64} deriving (Show, Eq, Enum, Bounded)
@@ -142,7 +148,7 @@ rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 -- TODO: More even spread of age
 start :: Int -> People
-start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person False 1 70 Male Farmer Endorphi 0 (0,0) V.empty [] (0,0))) ++ [Person True i age g prof cult (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty [] (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [Male, Female]) $ zip (infinitly [minBound::Profession .. maxBound::Profession]) (infinitly [minBound::Culture .. maxBound::Culture]), let age = f i a]
+start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person False 1 70 Male Farmer Endorphi 0 (0,0) V.empty V.empty (0,0))) ++ [Person True i age g prof cult (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty V.empty (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [Male, Female]) $ zip (infinitly [minBound::Profession .. maxBound::Profession]) (infinitly [minBound::Culture .. maxBound::Culture]), let age = f i a]
 	where
 		f i a
 			| i >= float2Int ((int2Float) a * 1.5) = 0

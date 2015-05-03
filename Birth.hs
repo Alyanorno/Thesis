@@ -65,6 +65,6 @@ birth gen people = p VB.++ (VB.fromList $ concat babies)
 
 
 makeBaby :: ID -> (ID, ID) -> Culture -> Person
-makeBaby id' parrents' culture' = Person True id' 0 (toEnum $ mod id' 2) None culture' 0 parrents' V.empty [] (0,0)
+makeBaby id' parrents' culture' = Person True id' 0 (toEnum $ mod id' 2) None culture' 0 parrents' V.empty V.empty (0,0)
 
 

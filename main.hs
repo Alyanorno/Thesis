@@ -45,13 +45,13 @@ main = do
 				| x < 10 = 50
 				| x < 50 = 50 + x * 3
 				| otherwise = 200
-			hPutStrLn h $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else (if a > 255 then 255 else 255)) ++ "\n" ++ list) "") positions))
+			hPutStrLn h $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
 -}
 -- Culture Map
---{-
-	n1 <- getLine
-	n2 <- getLine
+{-
+--	n1 <- getLine
+--	n2 <- getLine
 	let range = [read n1..read n2]
 	mapM_ (\(index, name) ->
 		withFile name WriteMode (\h -> do
@@ -63,21 +63,27 @@ main = do
 			let positions = [[((x,y), f p Endorphi, f p Brahmatic)  | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 			hPutStrLn h $ concat $ map (foldr (\((x,y),g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ "0" ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
----}
+-}
 -- Profession Map
 {-
-	n1 <- getLine
-	n2 <- getLine
+--	n1 <- getLine
+--	n2 <- getLine
 	let range = [read n1..read n2]
 	mapM_ (\(index, name) ->
 		withFile name WriteMode (\h -> do
 			let (g,m) = (generations seed 0 ((start peopleFromStart, V.empty))) !! index
-			let g' = VB.filter (((==Farmer).profession) .&& alive) g
-			let positions = [[VB.length $ VB.filter (\(x',y') -> x == x' && y == y') (VB.map position g') | x <- [0..mapRange]] | y <- [0..mapRange]]
-			mapM_ (hPutStrLn h) $ map (foldr (\a list -> (show a) ++ " " ++ list) "") positions ))
+			let g' = VB.filter alive g
+			let f l
+				| VB.null l = 0
+				| otherwise = (VB.foldr (\x list -> list + case x of
+					Administrator -> 200
+					Farmer -> 100
+					_ -> 0) 0 (VB.map profession l)) `div` (VB.length l)
+			let positions = [[((x,y), f p) | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
+			hPutStrLn h $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
 -}
-{-
+--{-
 	n <- getLine
 	let (g,m) = (generations seed 0 ((start peopleFromStart), V.empty)) !! read n
 	let g' = VB.filter alive g
@@ -87,7 +93,7 @@ main = do
 	print $ VB.length $ VB.filter (((==Female).gender) .&&. ((/=0).lover) .&&. ((<41).age)) g'
 	print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g | let ages = [0,10..80], (min,max) <- zip ages (tail ages)]
 	print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,10..80], (min,max) <- zip ages (tail ages)]
--}
+---}
 {-
 	n <- getLine
 	let (g,m) = (generations seed 0 ((start peopleFromStart), V.empty)) !! read n
