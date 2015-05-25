@@ -75,10 +75,7 @@ main = do
 			let g' = VB.filter alive g
 			let f l
 				| VB.null l = 0
-				| otherwise = (VB.foldr (\x list -> list + case x of
-					Administrator -> 200
-					Farmer -> 100
-					_ -> 0) 0 (VB.map profession l)) `div` (VB.length l)
+				| otherwise = (VB.foldr (\x list -> list + ((*) 100 $ professionValue x)) 0 (VB.map profession l)) `div` (VB.length l)
 			let positions = [[((x,y), f p) | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 			hPutStrLn h $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
@@ -125,11 +122,9 @@ death gen people = VB.map f $ VB.zip people' $ r
 		r = VB.fromList $ map double2Float $ take (VB.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		-- 140
 		people' = VB.filter ((<120).age) $ VB.map (\a -> a {age = (age a) + timeStep}) people
 		f :: (Person, Float) -> Person
 		f (p,r)
-			-- 0.7 0.95 0.95 0.80 0.70 0.50
 			| a < 20 = if r < 0.97 .^ timeStep' then p else p {alive = False} 
 			| a < 30 = if r < 0.99 .^ timeStep' then p else p {alive = False}
 			| a < 40 = if r < 0.99 .^ timeStep' then p else p {alive = False}

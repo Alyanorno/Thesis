@@ -2,8 +2,6 @@
 
 module Birth (birth) where
 
---import Prelude ((==), (/=), (+), (.), Int, ($), fst, snd)
---import qualified Prelude as L --hiding (head, id, foldr, foldr1, length, take, filter, map, zipWith, map, (++), or, and)
 
 import Prelude hiding (id)
 
@@ -16,7 +14,6 @@ import qualified Data.Vector.Unboxed.Mutable as M
 import qualified Data.Array.Unboxed as A
 
 import Data.List.Split (splitPlaces)
---import qualified Data.List as L
 
 import System.Random
 

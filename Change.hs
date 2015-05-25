@@ -4,6 +4,7 @@ module Change (change, toBuckets) where
 
 import Prelude hiding (id)
 import GHC.Float
+import GHC.Conc (numCapabilities)
 
 import Data.Vector.Generic (convert)
 import Data.Vector.Unboxed ((!), toList, Vector, snoc)
@@ -21,18 +22,25 @@ import Data.Int (Int64)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
+import Data.IORef
+import System.IO.Unsafe
 import System.Random
 import System.Random.Mersenne.Pure64 as R
-import Control.DeepSeq
+--import Control.DeepSeq
+--import Control.Concurrent
+import Control.Concurrent.MVar
+--import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Primitive
-import Control.Monad.Par
+import Control.Concurrent.Async
+import Control.Concurrent.ParallelIO
+--import Control.Monad.Par
 import Control.Monad.ST
+import qualified Control.Monad.Parallel as P
 --import Control.Monad.Loop.ForEach
-import Control.Parallel
-import Control.Parallel.Strategies
+--import Control.Parallel
+--import Control.Parallel.Strategies
 import Stuff
-
 
 
 
@@ -48,7 +56,7 @@ change gen people' = ((home.job.relations.aged) people', maps .! 0)
 		job :: People -> People
 		job p = VB.imap (\i a -> getAJob people chans a (V.slice (i*off) off random)) p
 			where
-				random = randomVector_ (size*off) (pureMT $ fromIntegral $ fromXorshift gen)
+ 				random = randomVector_ (size*off) (pureMT $ fromIntegral $ fromXorshift gen)
 				off = 2
 
 				chans :: [Double]
@@ -70,22 +78,15 @@ change gen people' = ((home.job.relations.aged) people', maps .! 0)
 				random :: Vector Int64
 				random = randomVector (VB.length p) (pureMT $ fromIntegral $ fromXorshift gen) 
 
---				parrentsPositions :: VB.Vector (Int, Int)
---				parrentsPositions = (VB.map g p)
---					where g a = (position.(p &!).fst.parrents) a
-
 		people = VB.filter alive people'
 
 		maps :: VB.Vector (Vector Float)
 		maps = VB.map perCulture $ VB.fromList [0..(fromEnum (maxBound :: Culture))]
 			where
 				perCulture :: Int -> Vector Float
-				perCulture culture = distanceFromCenter .+. concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture) .+. staticTerrainMap
---				perCulture culture = culturalMap .! culture
+				perCulture culture = concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture) .+. staticTerrainMap
 					where (.+.) = V.zipWith (+)
 
---				distanceFromCulturalCenter :: Vector (Vector Float)
---				distanceFromCulturalCenter = V.map (V.map scaleDistanceFromCulturalCenter) $ V.map (\i -> let culturalCenter = V.map position $ cultureBuckets ! i; c = (\(x,y) -> (div x (V.length culturalCenter), div y (V.length culturalCenter))) $ V.foldr1 (\(x,y) (x',y') -> (x+x',y+y')) culturalCenter in V.map ((distanceTo $ toFloat c).toFloat) positionMap) $ fromList [0..(fromEnum (maxBound :: Culture))]
 				distanceFromCulturalCenter :: VB.Vector (Vector Float)
 				distanceFromCulturalCenter = VB.map (V.map scaleDistanceFromCulturalCenter) $
 					VB.map (\i -> let
@@ -94,15 +95,6 @@ change gen people' = ((home.job.relations.aged) people', maps .! 0)
 						culturalCenter = average $ V.foldr (\(x,y) (x',y') -> (x+x',y+y')) (0,0) peoplePos
 						in V.map ((distanceTo $ culturalCenter).toFloat) positionMap)
 						$ VB.fromList [0..(fromEnum (maxBound :: Culture))]
-
-				distanceFromCenter :: Vector Float
-				distanceFromCenter = V.map (scaleDistanceFromCenter.(distanceTo $ toFloat (div range 2, div range 2)).toFloat) positionMap
-				
-				toFloat :: (Int,Int) -> (Float,Float)
-				toFloat (x,y) = (fromIntegral x, fromIntegral y)
-
-				distanceTo :: (Float,Float) -> (Float,Float) -> Float
-				distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
 
 				concentrationOfPeopleMap :: Vector Float
 				concentrationOfPeopleMap = V.convert $ VB.map (scaleConcentrationOfPeople.fromIntegral.VB.length) peopleMap
@@ -142,90 +134,129 @@ change gen people' = ((home.job.relations.aged) people', maps .! 0)
 		culturalRelations :: VB.Vector (Vector Float)
 		culturalRelations = relationsBetween gen people' numberCultures culture cultureBuckets sampleSize
 
-{-instance NFData a => NFData (MB.MVector s a) where
-    rnf (MB.MVector i n arr) = unsafeInlineST $ force i
-        where
-          force !ix | ix < n    = do x <- readArray arr ix
-                                     rnf x `seq` force (ix+1)
-                    | otherwise = return () -}
---instance NFData a => NFData (ST s ()) where
---	rnf (ST s()) = RealWorld s
 
 createRelations :: RandomGenerator -> People -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> People
-createRelations gen people alivePeople professionals professionalRelations culturals culturalRelations = VB.modify (\v -> applyMatches 0 v matches) people
+--createRelations gen people alivePeople professionals professionalRelations culturals culturalRelations = VB.modify (\v -> applyMatches 0 v matches) people
+createRelations gen people alivePeople professionals professionalRelations culturals culturalRelations = {-VB.modify (\v -> applyMatches v 0) people-} unsafePerformIO $ do
+	let s = VB.length people
+	let offset = numCapabilities
+	v <- VB.unsafeThaw people
+--	vRef <- newMVar v
+
+--	if s > 1000 then do
+		--t1 <- async $ applyMatches v (offset*0) (offset*1-1)
+		--t2 <- async $ applyMatches v (offset*1) (s-1)
+		--wait t1
+		--wait t2
+-- 		P.mapM (\(from,to) -> applyMatches v from to) $ let t = [0, s `div` offset..s] in zip t (tail t)
+	applyMatches v $ let t = [0, s `div` offset..s] in zip t (tail t)
+--	else
+		--mapM (\i' -> forM i' (\i -> applyMatches vRef i)) $ chunksOf (s `div` offset) [0..s-1]
+		--applyMatches v 0 (s-1)
+--		P.mapM (\(from,to) -> applyMatches v from to) $ [(0, s-1)]
+
+--	mapM (\i -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [0..s-1]
+--	P.mapM (\i' -> forM i' (\i -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i))) $ chunksOf chunkSize [0..s-1]
+--	P.mapM (\indexs -> mapM (\(i,m) -> applyMatches vRef i m) $ zip indexs $ map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) indexs) $ chunksOf chunkSize [0..s-1]
+--	P.mapM (\index -> V.imap (\i m -> applyMatches v (index + i) m) $ V.generate index (\i -> match (people .! (index + i)) (pureMT $ fromIntegral $ gens ! (index + i)))) $ [0,chunkSize..s-1] ++ [rem (s-1) chunkSize]
+
+{-	t1 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*0..offset*1-1]
+	t2 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*1..s-1]
+	wait t1
+	wait t2 -}
+{-	t1 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*0..offset*1-1]
+	t2 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*1..offset*2-1]
+	t3 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*2..offset*3-1]
+	t4 <- async $ mapM (\(i,m) -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) $ map (\i -> (i, match (people .! i) (pureMT $ fromIntegral $ gens ! i))) [offset*3..s-1]
+	wait t1
+	wait t2
+	wait t3
+	wait t4 -}
+
+{-	t1 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [0..s-1])
+	wait t1 -}
+{-	t1 <- async (mapM (\i -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*0..offset*1-1])
+	t2 <- async (mapM (\i -> applyMatches vRef i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*1..s-1])
+	wait t1
+	wait t2 -}
+{-	t1 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*0..offset*1-1])
+	t2 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*1..offset*2-1])
+	t3 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*2..offset*3-1])
+	t4 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*3..s-1])
+	wait t1
+	wait t2
+	wait t3
+	wait t4 -}
+{-	t1 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*0..offset*1-1])
+	t2 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*1..offset*2-1])
+	t3 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*2..offset*3-1])
+	t4 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*3..offset*4-1])
+	t5 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*4..offset*5-1])
+	t6 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*5..offset*6-1])
+	t7 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*6..offset*7-1])
+	t8 <- async (mapM (\i -> applyMatches v i $ match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*7..s-1])
+	wait t1
+	wait t2
+	wait t3
+	wait t4
+	wait t5
+	wait t6
+	wait t7
+	wait t8 -}
+
+--	t <- takeMVar vRef
+	v' <- VB.unsafeFreeze v
+	return (v')
 	where
-{-	loopF :: MB.MVector (PrimState (ST s)) Person -> ST s ()
-	loopF v = do
-		matches <- runPar $ do
-			let s = VB.length people
---		t1 <- spawn (return $ stToIO(loop 0 (s `div` 2)  v))
---		t2 <- spawn (return (loop (s `div` 2) s v))
---		t <- get t1
---		t <- get t2
-
-			t1 <- spawnP (match (people .! 0) (pureMT $ fromIntegral $ gens ! 0))
-			t1' <- get t1
-			return (applyMatch 0 v t1')-}
-
-	applyMatches :: Int -> MB.MVector (PrimState (ST s)) Person -> [(ID, Vector ID)] -> ST s ()
-	applyMatches i v matches	
---		| i == 0 = let peopleSize = VB.length people in (loop (i+1) (peopleSize `div` 2) v) `par` (loop (peopleSize `div` 2) peopleSize v) `pseq` (loop (peopleSize `div` 2) peopleSize v)
-		| i >= VB.length people = return ()
-		| (not.alive) person = next
---		| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive) .||. ((>40).age)) person = next gen
-		| (((==Female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person && fst m /= 0 = do
-			let start = id $ VB.head people;
-			i' <- (return $ (fst m) - start);
-
-			p' <- MB.read v i';
-			MB.write v i' (p' {lover = start + i});
-
---			p <- next `par` (loop (i+200) max v) `pseq` (MB.read v i)
-			p <- MB.read v i;
-			if V.length (friends p) + V.length (snd m) < 200 then do
-				MB.write v i (p {lover = fst m, friends = (friends p) V.++ (snd m)});
-			else do
-				MB.write v i (p {lover = fst m, friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
-			next
---		| V.null (snd m) = next
-		| otherwise = do
-			p <- MB.read v i;
-			if V.length (friends p) + V.length (snd m) < 200 then do
-				MB.write v i (p {friends = (friends p) V.++ (snd m)});
-			else do
-				MB.write v i (p {friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
-			next
+--	applyMatches :: MVar (MB.MVector RealWorld Person) -> Int -> (ID, Vector ID) -> IO ()
+	applyMatches :: MB.MVector RealWorld Person -> [(Int, Int)] -> IO [()]
+	applyMatches !v !list = P.mapM (\(from,to) -> applyMatches' from to) list
+--	applyMatches !v !list = parallel_ [applyMatches' from to | (from,to) <- list] -- stopGlobalPool
 		where
-		next = applyMatches (i+1) v $ tail matches
+		applyMatches' :: Int -> Int -> IO ()
+		applyMatches' !i !max
+			| i >= max = return ()
+			| (not.alive) person = next
+--			| (((/=Female).gender) .||. ((/=0).lover) .||. (not.alive) .||. ((>40).age)) person = next gen
+			| (((==Female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person && fst m /= 0 = do
+--				withMVar vRef (\v -> do
+				let start = id $ VB.head people;
+				i' <- (return $ (fst m) - start);
 
-		person = people .! i
+				p' <- MB.read v i';
+				MB.write v i' (p' {lover = start + i});
 
-		gen = gens ! i
+				p <- MB.read v i;
+				if V.length (friends p) + V.length (snd m) < 200 then do
+					MB.write v i (p {lover = fst m, friends = (friends p) V.++ (snd m)});
+				else do
+					MB.write v i (p {lover = fst m, friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
+				next
+--			| V.null (snd m) = next
+			| otherwise = do
+--				withMVar vRef (\v -> do
+				p <- MB.read v i;
+				if V.length (friends p) + V.length (snd m) < 200 then do
+					MB.write v i (p {friends = (friends p) V.++ (snd m)});
+				else do
+					MB.write v i (p {friends = (V.drop (V.length (snd m)) (friends p)) V.++ (snd m)});
+				next
+			where
+			next = applyMatches' (i+1) max
 
-		m :: (ID, Vector ID)
-		m = head matches
---		m = match person pureGen
---			where pureGen = pureMT $ fromIntegral $ gen
+			person = people .! i
+
+			gen = gens ! i
+
+			m :: (ID, Vector ID)
+--			m = head matches
+--			m = match person $ pureMT $ fromIntegral $ gen
+			m = match (people .! i) (pureMT $ fromIntegral $ gens ! i)
 
 	gens = (V.iterateN (VB.length people) (fromXorshift.step.Xorshift) (fromXorshift gen))
 
-	matches :: [(ID, Vector ID)]
-	matches = runPar $ do
-		let s = VB.length people
-		let offset = s `div` 4
-
-		t1 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*0..offset*1-1])
-		t2 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*1..offset*2-1])
-		t3 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*2..offset*3-1])
-		t4 <- spawnP (map (\i -> match (people .! i) (pureMT $ fromIntegral $ gens ! i)) [offset*3..s-1])
-		t1' <- get t1
-		t2' <- get t2
-		t3' <- get t3
-		t4' <- get t4
-		return (t1' ++ t2' ++ t3' ++ t4')
-
 	match :: Person -> PureMT -> (ID, Vector ID)
-	match person gen
+	match !person !gen
 --		| VB.length people == 0 = 0
 		| V.null potentialMates = (0, V.empty)
 		| otherwise = (potentialMates ! r, V.map (potentialMates !) $ randomInts (timeStep*5) (V.length potentialMates-1) gen)
@@ -234,19 +265,6 @@ createRelations gen people alivePeople professionals professionalRelations cultu
 			(r,_) = randomR (0, V.length potentialMates-1) gen
 
 			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture
---			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ ((potentialProfessional `par` potentialCulture) `pseq` (potentialProfessional V.++ potentialCulture))
-{-			potentialMates = runPar $ do
-				t1 <- spawnP potentialProfessional
-				t2 <- spawnP potentialCulture
-				t3 <- spawnP potentialSameProfessional
-				t4 <- spawnP potentialSameCulture
-				t5 <- spawnP potentialRandom
-				t1' <- get t1
-				t2' <- get t2
-				t3' <- get t3
-				t4' <- get t4
-				t5' <- get t5
-				return $ t1' V.++ t2' V.++ t3' V.++ t4' V.++ t5' -}
 
 			{-# INLINE conditions #-}
 			conditions !x = (((/=gender person).gender) .&&. ((<50).age) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents))) x
@@ -259,7 +277,7 @@ createRelations gen people alivePeople professionals professionalRelations cultu
 			profNumInternal = (sizeProfessionals, offset cultNum)
 			cultNumInternal = (sizeCulturals, offset profNumInternal)
 
-			offset (a,b) = a + b
+			offset (!a,!b) = a + b
 
 			sizeProfessionals = V.sum $ profs
 			sizeCulturals = V.sum $ cults
@@ -269,7 +287,7 @@ createRelations gen people alivePeople professionals professionalRelations cultu
 			potentialSameCulture = g cult sameCultNum
 
 			{-# INLINE g #-}
-			g v s = V.map (id.(v .!)) $ V.filter (conditions.(v .!)) $ randomInts_ (VB.length v-1) s
+			g !v !s = V.map (id.(v .!)) $ V.filter (conditions.(v .!)) $ randomInts_ (VB.length v-1) s
 
 
 			potentialProfessional :: Vector ID
@@ -292,18 +310,6 @@ createRelations gen people alivePeople professionals professionalRelations cultu
 
 			profs = V.map (floor.(* (2 * int2Float timeStep))) $ professionalRelations .! (fromEnum $ profession person)
 
---			potentialCulture :: Vector Int
---			potentialCulture
---				| V.null potential = V.empty
---				| otherwise = V.filter (conditions.(people &!)) $ V.map (potential !) $ randomInts_ (V.length potential-1) cultNum
---				where
---					potential :: Vector Int
---					potential = V.ifoldr f V.empty $ V.iterateN (fromEnum (maxBound::Culture)) (fromXorshift.step.Xorshift) $ fst $ R.randomInt64 gen
---					f :: Int -> Int64 -> Vector Int -> Vector Int
---					f i g v
---						| VB.null p = v
---						| otherwise = (V.++) v $ V.map (id.(p .!)) $ randomInts (cults ! i) (VB.length p-1) $ pureMT $ fromIntegral g
---						where p = culturals .! i
 			potentialCulture :: Vector Int
 			potentialCulture
 				| V.null potential = V.empty
@@ -339,7 +345,6 @@ createRelations gen people alivePeople professionals professionalRelations cultu
 			cult :: VB.Vector Person
 			cult = culturals .! (fromEnum $ culture person)
 
---getAJob :: (A.IArray a Float, A.Ix i, Num i) => People -> [Float] -> Person -> a i e -> Person
 getAJob :: People -> [Double] -> Person -> Vector Double -> Person
 getAJob people chans person random
 	| profession person == None = person {profession = f [minBound::Profession .. maxBound::Profession] random chans}
@@ -371,8 +376,9 @@ getAHome range maps person parrentPosition gen
 		map = maps .! (fromEnum $ culture person)
 		possibleHomes = filter ((/= infinity).valueAt)  [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
 		range' = 3
-		valueAt (x,y) = map ! (x+y*range)
+		valueAt p@(x,y) = (map ! (x+y*range)) + (professionValue $ profession person) * (scaleDistanceFromCenter $ distanceTo (toFloat (div range 2, div range 2)) (toFloat p))
 
+--V.map (scaleDistanceFromCenter.().toFloat) positionMap
 
 
 toBuckets :: VB.Vector Int -> (Person -> Int) -> People -> VB.Vector People
