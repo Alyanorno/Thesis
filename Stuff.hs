@@ -4,6 +4,7 @@ module Stuff where
 
 import Prelude hiding (id)
 import GHC.Float
+import Data.Int
 
 import Data.Vector.Unboxed ((!), toList, Vector, snoc)
 import qualified Data.Vector as VB
@@ -31,40 +32,44 @@ import Control.Exception.Base (assert)
 {-# INLINE (.||.) #-}
 (.||.) f g !a = (f a) || (g a)
 
-data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
-type Cultures = [Culture]
---newtype Culture = Culture Int deriving (Show, Eq, Enum)
---(brahmatic:endorphi:_) = map Culture [0..]
---instance Bounded Culture where
---	minBound = brahmatic
---	maxBound = endorphi
+--data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
+--type Cultures = [Culture]
+newtype Culture = Culture Int8 deriving (Show, Eq)
+(brahmatic:endorphi:_) = map Culture [0..]
+allCultures = [brahmatic, endorphi]
+allCulturesVector = VB.fromList ([0,1] :: [Int])
+cultureToInt :: Culture -> Int
+cultureToInt (Culture c) = fromIntegral c
 
-data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
-type Professions = [Profession]
---newtype Profession = Profession Int deriving (Show, Eq, Enum)
---(farmer:administrator:beggar:none:_) = map Profession [0..]
---instance Bounded Profession where
---	minBound = farmer
---	maxBound = none
-
+--data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
+--type Professions = [Profession]
+newtype Profession = Profession Int8 deriving (Show, Eq)
+(farmer:administrator:beggar:none:_) = map Profession [0..]
+allProfessions = [farmer, administrator, beggar, none]
+allProfessionsVector = VB.fromList ([0,1,2,3] :: [Int])
+professionToInt :: Profession -> Int
+professionToInt (Profession p) = fromIntegral p
 
 type ID = Int
-data Gender = Male | Female deriving (Show, Eq, Enum)
---newtype Gender = Gender Int deriving (Show, Eq, Enum)
---(male:female:_) = map Gender [1..]
+--data Gender = Male | Female deriving (Show, Eq, Enum)
+newtype Gender = Gender Int8 deriving (Show, Eq)
+(male:female:_) = map Gender [0..]
+
+alive :: Person -> Bool
+alive p = if dead p == 0 then True else False
 data Person = Person {
-	alive :: {-# UNPACK #-} !Bool,
-	-- Unique number used to identifiy person, people are always stored in order
-	id :: {-# UNPACK #-} !ID,
-	age :: {-# UNPACK #-} !Int,
+	dead :: {-# UNPACK #-} !Int8,
 	gender :: {-# UNPACK #-} !Gender,
 	profession :: {-# UNPACK #-} !Profession,
 	culture :: {-# UNPACK #-} !Culture,
+	-- Unique number used to identifiy person, people are always stored in order
+	age :: {-# UNPACK #-} !Int,
+	id :: {-# UNPACK #-} !ID,
 	-- A zero means no lover
 	lover :: {-# UNPACK #-} !ID,
 	parrents :: {-# UNPACK #-} !(ID, ID),
 	children :: {-# UNPACK #-} !(Vector ID),
-	friends :: {-# UNPACK #-} !(Vector ID),
+--	friends :: {-# UNPACK #-} !(Vector ID),
 	-- Below a certain age this attribute is ignored
 	position :: {-# UNPACK #-} !(Int, Int)
 	} deriving (Show)
@@ -72,6 +77,8 @@ type People = VB.Vector Person
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
+
+type Friends = VB.Vector (Vector ID)
 
 
 newtype Xorshift = Xorshift {fromXorshift :: Int64} deriving (Show, Eq, Enum, Bounded)
@@ -113,15 +120,15 @@ randomVector n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fil
 				M.write v i x
 				fill v (i+1) g'
 			| otherwise = return ()
-randomVector_ :: Int -> PureMT -> Vector Double
-randomVector_ n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
+randomVector_ :: Int -> PureMT -> (Vector Double, PureMT)
+randomVector_ n g = if n <= 0 then (V.empty, g) else runST $ do { v <- M.new n; g' <- fill v 0 g; v' <- V.unsafeFreeze v; return (v', g')}
 	where
 		fill v i g
 			| i < n = do
 				(x, g') <- return $ R.randomDouble g
 				M.write v i x
 				fill v (i+1) g'
-			| otherwise = return ()
+			| otherwise = return g
 
 
 rescale :: Int -> Int -> Int -> Int
@@ -130,13 +137,14 @@ rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromInt
 rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
+
 start :: Int -> People
-start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person False 1 70 Male Farmer Endorphi 0 (0,0) V.empty V.empty (0,0))) ++ [Person True i age g prof cult (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty V.empty (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [Male, Female]) $ zip (infinitly [minBound::Profession .. maxBound::Profession]) (infinitly [minBound::Culture .. maxBound::Culture]), let age = f i a]
+start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) V.empty (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
 	where
-		f i a
-			| i >= float2Int ((int2Float) a * 1.5) = 0
-			| i >= a = 20
-			| i >= a `div` 2 = 40
+		f i max
+			| i >= float2Int ((int2Float) max * 0.75) = 0
+			| i >= float2Int ((int2Float) max * 0.30) = 20
+			| i >= float2Int ((int2Float) max * 0.10) = 40
 			| otherwise = 60
 		infinitly x = cycle $ concat $ zipWith (\a b -> a : b : []) x x
 
@@ -153,14 +161,14 @@ mapRange :: Int
 mapRange = 50
 
 timeStep :: Int
-timeStep = 2 -- If 1 they will never reproduce :P (birth rounds down)
+timeStep = 4 -- If 1 they will never reproduce :P (birth rounds down)
 
 peopleFromStart :: Int
 peopleFromStart = 50
 
 scaleDistanceFromCenter :: Float -> Float
 --scaleDistanceFromCenter = (*) (0-0.1) --0.001
-scaleDistanceFromCenter a = 1000 - a * 10
+scaleDistanceFromCenter a = 100 - a * 1
 
 scaleDistanceFromCulturalCenter :: Float -> Float
 scaleDistanceFromCulturalCenter = (*) (0-0.1)
@@ -235,10 +243,10 @@ staticProfessionalRelations :: VB.Vector (Vector Float)
 staticProfessionalRelations = let fl = V.fromList in VB.fromList [fl [1,1,0,0], fl [1,1,0,0], fl [0,0,1,1], fl [0,0,1,1]]
 
 professionValue prof
-	| prof == Farmer = 1
-	| prof == Administrator = 2
-	| prof == Beggar = 0
-	| prof == None = 0
+	| prof == farmer = 1
+	| prof == administrator = 2
+	| prof == beggar = 0
+	| prof == none = 0
 	| otherwise = 0
 
 boxFilter :: Vector Float -> Vector Float

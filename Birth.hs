@@ -22,9 +22,10 @@ import Change
 
 
 
-birth :: RandomGenerator -> People -> People
-birth gen people = p VB.++ (VB.fromList $ concat babies)
+birth :: RandomGenerator -> (People, Friends) -> (People, Friends)
+birth gen (people, friends) = (p VB.++ add, friends VB.++ VB.replicate (VB.length add) V.empty)
 	where
+		add = VB.fromList $ concat babies
 		p = VB.accum (\p' b -> p' {children = (children p') V.++ (V.fromList $ b)}) people $ concat $ map f babies
 			where
 				f :: [Person] -> [(ID, [ID])]
@@ -52,7 +53,7 @@ birth gen people = p VB.++ (VB.fromList $ concat babies)
 					| otherwise = conditions a
 
 				conditions :: Person -> Bool
-				conditions a = (((==Female).gender) .&&. ((/=0).lover) .&&. ((<41).age) .&&. alive) a
+				conditions a = (((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive) a
 
 		numberOfBabies :: [Int]
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
@@ -62,6 +63,6 @@ birth gen people = p VB.++ (VB.fromList $ concat babies)
 
 
 makeBaby :: ID -> (ID, ID) -> Culture -> Person
-makeBaby id' parrents' culture' = Person True id' 0 (toEnum $ mod id' 2) None culture' 0 parrents' V.empty V.empty (0,0)
+makeBaby id' parrents' culture' = Person 0 (if mod id' 2 == 0 then male else female) none culture' 0 id' 0 parrents' V.empty (0,0)
 
 
