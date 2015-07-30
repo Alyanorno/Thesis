@@ -54,7 +54,7 @@ main = do
 			putStrLn "Enter number of iterations: "
 			n <- getLine
 			let p = start peopleFromStart
-			let (g,m) = head $ (generations seed 0 [(p, VB.replicate (VB.length p) V.empty)]) !! (read n)
+			let (g,_,_) = generations seed 0 (read n) (p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty)
 			let g' = VB.filter alive g
 			let g'' = VB.filter (not.alive) g
 			putStrLn ""
@@ -64,8 +64,8 @@ main = do
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g'' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ (VB.length $ VB.filter ((==female).gender) g', VB.length $ VB.filter ((==male).gender) g')
---			print $ VB.map VB.length $ toBuckets allCulturesVBector (cultureToInt.culture) g'
---			print $ VB.map VB.length $ toBuckets allProfessionsVBector (professionToInt.profession) g'
+			print $ VB.map VB.length $ toBuckets allCulturesVector (cultureToInt.culture) g'
+			print $ VB.map VB.length $ toBuckets allProfessionsVector (professionToInt.profession) g'
 
 	putStrLn "---------------------"
 
@@ -81,7 +81,8 @@ genPopulationMap n1 n2 = do
 	let range = [read n1..read n2]
 	mapM_ (\(index, name) ->
 		withFile name WriteMode (\h -> do
-			let (g,m) = head $ (generations seed 0 ((start peopleFromStart, VB.empty))) !! index
+			let p = start peopleFromStart
+			let (g,_,_) = generations seed 0 index (p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty)
 			let g' = VB.filter alive g
 			let positions = [[((x,y), VB.length $ VB.filter (\(x',y') -> x == x' && y == y') (VB.map position g')) | x <- [0..mapRange]] | y <- [0..mapRange]]
 			let f x--let r = x * 4 in if r > 255 then 255 else r
@@ -96,13 +97,14 @@ genCultureMap n1 n2 = do
 	let range = [read n1..read n2]
 	mapM_ (\(index, name) ->
 		withFile name WriteMode (\h -> do
-			let (g,m) = head $ (generations seed 0 ((start peopleFromStart, VB.empty))) !! index
+			let p = start peopleFromStart
+			let (g,_,_) = generations seed 0 index ((p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty))
 			let g' = VB.filter alive g
 			let f p c
 				| VB.null p = 0
 				| otherwise = float2Int $ (int2Float $ VB.length $ VB.filter ((==c).culture) p) / (int2Float $ VB.length p) * 255
-			let positions = [[((x,y), f p endorphi, f p brahmatic)  | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
-			hPutStrLn h $ concat $ map (foldr (\((x,y),g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ "0" ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
+			let positions = [[((x,y), f p endorphi, f p brahmatic, f p uppbrah)  | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
+			hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
 
 genProfessionMap n1 n2 = do
@@ -111,7 +113,9 @@ genProfessionMap n1 n2 = do
 		let f l
 			| VB.null l = 0
 			| otherwise = (VB.foldr (\x list -> list + ((*) 100 $ professionValue x)) 0 (VB.map profession l)) `div` (VB.length l)
-		let !g' = VB.filter alive $ fst $ head $ (generations seed 0 ((start peopleFromStart, VB.empty))) !! index
+		let p = start peopleFromStart
+		let (g,_,_) = generations seed 0 index ((p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty))
+		let !g' = VB.filter alive g
 		let !positions = [[((x,y), f p) | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 		t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
 		forkIO $ do
@@ -127,22 +131,25 @@ genProfessionMap n1 n2 = do
 
 
 
-generations :: StdGen -> Int -> [(People, Friends)] -> [[(People, Friends)]]
-generations seed i previous = previous : next
+generations :: StdGen -> Int -> Int -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+generations seed i n previous
+	| i >= n = previous
+	| otherwise = next
 	where 
-		next = generations seed (i+1) $ change gen $ map (birth gen) $ map (death gen) previous
+		next = generations seed (i+1) n $ ((change gen).(birth gen).(death gen)) previous
 		gen = Xorshift $ (randomRs (minBound :: Int64, maxBound :: Int64) seed :: [Int64]) !! i
 
 
-death :: RandomGenerator -> (People, Friends) -> (People, Friends)
-death gen (people, friends) = (VB.map f $ VB.zip people' $ r, friends')
+death :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+death gen (people, friends, childrens) = (VB.map f $ VB.zip people' $ r, friends', childrens')
 	where
 		friends' = if VB.length friends - VB.length people' > 0 then VB.take (VB.length people') friends else friends
+		childrens' = if VB.length childrens - VB.length people' > 0 then VB.take (VB.length people') childrens else childrens
 
 		r = VB.fromList $ map double2Float $ take (VB.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		(_,people') = VB.break ((<80).age) $ VB.map (\a -> a {age = (age a) + timeStep}) people
+		(_,people') = VB.break ((<80).age) $ VB.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
 		f :: (Person, Float) -> Person
 		f (p,r)
 			| a < 20 = if r < 0.97 then p else p {dead = 1} 

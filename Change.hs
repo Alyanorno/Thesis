@@ -36,12 +36,13 @@ import Stuff
 
 
 
-change :: RandomGenerator -> [(People, Friends)] -> [(People, Friends)]
-change gen peoples = map (\(people, friends) -> let ap = VB.filter alive people in ((relations ap friends).(home ap).(job ap)) people) peoples
+change :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople friends).(home alivePeople).(job alivePeople)) people in (p, f, childrens)
 	where
-		relations :: People -> People -> Friends -> (People, Friends)
-		relations alivePeople p friends = createRelations gen friends p alivePeople pb (professionalRelations pb) cb (culturalRelations cb)
-			where cb = (cultureBuckets alivePeople); pb = (professionalBuckets alivePeople)
+		alivePeople = VB.filter alive people
+
+		relations :: People -> Friends -> People -> (People, Friends)
+		relations alivePeople friends p = createRelations gen friends p alivePeople professionalBuckets professionalRelations cultureBuckets culturalRelations
 
 		job :: People -> People -> People
 		job alivePeople p = VB.imap (\i a -> if age a == 20 then getAJob alivePeople chans a (V.slice (i*off) off random) else a) p
@@ -99,7 +100,7 @@ change gen peoples = map (\(people, friends) -> let ap = VB.filter alive people 
 						relationsTo i p = (culturalRelations .! i) ! ((cultureToInt.culture) p)
 
 				peopleMap :: VB.Vector People
-				peopleMap = VB.accumulate VB.snoc (VB.replicate (V.length positionMap) VB.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) alivePeople
+				peopleMap = VB.accumulate VB.snoc (VB.replicate (V.length positionMap) VB.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ alivePeople
 					where 
 						f p = (((\(x,y) -> x + y * range).position) p, p)
 --				peopleMap = toBuckets (VB.fromList [0..VB.length positionMap]) ((\(x,y) -> x + y * range).position) $ VB.filter ((/=(0,0)).position) alivePeople
@@ -112,19 +113,19 @@ change gen peoples = map (\(people, friends) -> let ap = VB.filter alive people 
 		numberProfessions = length allProfessions
 		numberCultures = length allCultures
 
-		professionalBuckets :: People -> VB.Vector People
-		professionalBuckets p = toBuckets allProfessionsVector (professionToInt.profession) p
+		professionalBuckets :: VB.Vector People
+		professionalBuckets = toBuckets allProfessionsVector (professionToInt.profession) alivePeople
 
-		cultureBuckets :: People -> VB.Vector People
-		cultureBuckets p = toBuckets allCulturesVector (cultureToInt.culture) p
+		cultureBuckets :: VB.Vector People
+		cultureBuckets = toBuckets allCulturesVector (cultureToInt.culture) alivePeople
 
 		sampleSize = 100
 
-		professionalRelations :: VB.Vector People -> VB.Vector (Vector Float)
-		professionalRelations professionalBuckets = VB.zipWith (V.zipWith (+)) staticProfessionalRelations $ relationsBetween gen people numberProfessions (professionToInt.profession) professionalBuckets sampleSize
+		professionalRelations :: VB.Vector (Vector Float)
+		professionalRelations = VB.zipWith (V.zipWith (+)) staticProfessionalRelations $ relationsBetween gen people numberProfessions (professionToInt.profession) professionalBuckets sampleSize
 
-		culturalRelations :: VB.Vector People -> VB.Vector (Vector Float)
-		culturalRelations cultureBuckets = relationsBetween gen people numberCultures (cultureToInt.culture) cultureBuckets sampleSize
+		culturalRelations :: VB.Vector (Vector Float)
+		culturalRelations = relationsBetween gen people numberCultures (cultureToInt.culture) cultureBuckets sampleSize
 
 
 createRelations :: RandomGenerator -> Friends -> People -> People -> VB.Vector People -> VB.Vector (Vector Float) -> VB.Vector People -> VB.Vector (Vector Float) -> (People, Friends)
@@ -141,7 +142,7 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 --	else
 --		applyMatches vRef fends $ zip (map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)) $ let t = [0, s `div` offset..s] in zip t (tail t)
 
-	applyMatches vRef fends $ zip (map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)) $ let t = [0, s `div` offset..s] in zip t (tail t)
+	applyMatches vRef fends $ zip (map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)) $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
 
 	t <- takeMVar vRef
 	v' <- VB.unsafeFreeze t

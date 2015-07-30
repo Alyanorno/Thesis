@@ -4,7 +4,6 @@ module Stuff where
 
 import Prelude hiding (id)
 import GHC.Float
-import Data.Int
 
 import Data.Vector.Unboxed ((!), toList, Vector, snoc)
 import qualified Data.Vector as VB
@@ -17,7 +16,11 @@ import qualified Data.Array.Unboxed as A
 import Data.List.Split (chunksOf)
 import qualified Data.List as L
 
-import Data.Int (Int64)
+import Foreign.Storable
+import Foreign.Ptr
+import Data.Int
+import Data.Word
+import Data.Bits
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
@@ -34,16 +37,16 @@ import Control.Exception.Base (assert)
 
 --data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
 --type Cultures = [Culture]
-newtype Culture = Culture Int8 deriving (Show, Eq)
-(brahmatic:endorphi:_) = map Culture [0..]
-allCultures = [brahmatic, endorphi]
-allCulturesVector = VB.fromList ([0,1] :: [Int])
+newtype Culture = Culture {fromCulture :: Word8} deriving (Show, Eq)
+(brahmatic:endorphi:uppbrah:_) = map Culture [0..]
+allCultures = [brahmatic, endorphi, uppbrah]
+allCulturesVector = VB.fromList ([0,1,2] :: [Int])
 cultureToInt :: Culture -> Int
 cultureToInt (Culture c) = fromIntegral c
 
 --data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 --type Professions = [Profession]
-newtype Profession = Profession Int8 deriving (Show, Eq)
+newtype Profession = Profession {fromProfession :: Word8} deriving (Show, Eq)
 (farmer:administrator:beggar:none:_) = map Profession [0..]
 allProfessions = [farmer, administrator, beggar, none]
 allProfessionsVector = VB.fromList ([0,1,2,3] :: [Int])
@@ -52,13 +55,13 @@ professionToInt (Profession p) = fromIntegral p
 
 type ID = Int
 --data Gender = Male | Female deriving (Show, Eq, Enum)
-newtype Gender = Gender Int8 deriving (Show, Eq)
-(male:female:_) = map Gender [0..]
+newtype Gender = Gender {fromGender :: Word8} deriving (Show, Eq)
+(male:female:_) = map Gender ([0..] :: [Word8])
 
 alive :: Person -> Bool
 alive p = if dead p == 0 then True else False
 data Person = Person {
-	dead :: {-# UNPACK #-} !Int8,
+	dead :: {-# UNPACK #-} !Word8,
 	gender :: {-# UNPACK #-} !Gender,
 	profession :: {-# UNPACK #-} !Profession,
 	culture :: {-# UNPACK #-} !Culture,
@@ -68,16 +71,57 @@ data Person = Person {
 	-- A zero means no lover
 	lover :: {-# UNPACK #-} !ID,
 	parrents :: {-# UNPACK #-} !(ID, ID),
-	children :: {-# UNPACK #-} !(Vector ID),
+--	children :: {-# UNPACK #-} !(Vector ID),
 --	friends :: {-# UNPACK #-} !(Vector ID),
 	-- Below a certain age this attribute is ignored
 	position :: {-# UNPACK #-} !(Int, Int)
 	} deriving (Show)
 type People = VB.Vector Person
 
+word32ToWord8 :: Word32 -> Word8
+word32ToWord8 a = fromIntegral a
+
+word8ToWord32 :: Word8 -> Word32
+word8ToWord32 a = fromIntegral a
+
+instance Storable Person where
+	sizeOf _ = sizeOf (undefined :: Int32) * 7 + sizeOf (undefined :: Word32)
+	alignment _ = alignment (undefined :: Word32)
+
+	{-# INLINE peek #-}
+	peek p = do
+		let q = castPtr p
+		t <- peekElemOff q 0
+		let f i = word32ToWord8 $ shiftR t (8*i)
+		dead <- return $ f 0
+		gender <- return $ f 1
+		profession <- return $ f 2
+		culture <- return $ f 3
+		age <- peekElemOff q 1
+		id <- peekElemOff q 2
+		lover <- peekElemOff q 3
+		parrents1 <- peekElemOff q 4
+		parrents2 <- peekElemOff q 5
+		position1 <- peekElemOff q 6
+		position2 <- peekElemOff q 7
+		return (Person dead (Gender gender) (Profession profession) (Culture culture) age id lover (parrents1, parrents2) (position1, position2))
+
+	{-# INLINE poke #-}
+	poke p (Person dead gender profession culture age id lover (parrents1, parrents2) (position1, position2)) = do
+		let q = castPtr p
+		pokeElemOff q 0 $ let (<<) = shiftL in (word8ToWord32 dead) .|. ((word8ToWord32 $ fromGender gender) << 8) .|. ((word8ToWord32 $ fromProfession profession) << 16) .|. ((word8ToWord32 $ fromCulture culture) << 24)
+		pokeElemOff q 1 age
+		pokeElemOff q 2 id
+		pokeElemOff q 3 lover
+		pokeElemOff q 4 parrents1
+		pokeElemOff q 5 parrents2
+		pokeElemOff q 6 position1
+		pokeElemOff q 7 position2
+
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
 
+type Childrens = VB.Vector (Vector ID)
 type Friends = VB.Vector (Vector ID)
 
 
@@ -139,7 +183,7 @@ rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 
 start :: Int -> People
-start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) V.empty (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) V.empty (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
+start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
 	where
 		f i max
 			| i >= float2Int ((int2Float) max * 0.75) = 0
