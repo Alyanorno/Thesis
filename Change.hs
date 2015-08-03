@@ -27,6 +27,7 @@ import System.IO.Unsafe
 import System.Random
 import System.Random.Mersenne.Pure64 as R
 import System.Random.MWC
+import Control.Exception (assert)
 import Control.Concurrent.MVar
 import Control.Monad
 import Control.Monad.Primitive
@@ -132,15 +133,16 @@ createRelations :: RandomGenerator -> Friends -> People -> People -> VB.Vector P
 createRelations gen friends people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = VB.length people
 	-- If fixed the result will not change depending on number of threads
-	let offset = numCapabilities
+	let offset = 12 --numCapabilities
 	let randomGenerators = map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)
+	let genWithRanges = zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
 
 	fends <- VB.unsafeThaw friends
-	applyFriendMatches fends $ zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
+	applyFriendMatches fends genWithRanges
 	fends' <- VB.unsafeFreeze fends
 
 	v <- VB.unsafeThaw people
-	applyLoveMatches v fends' (head randomGenerators)
+	applyLoveMatches v fends' genWithRanges
 	v' <- VB.unsafeFreeze v
 
 	return (v', fends')
@@ -163,23 +165,23 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 			m :: Vector ID
 			(m, gen') = match (people .! i) gen
 
-	applyLoveMatches :: MB.MVector RealWorld Person -> VB.Vector (Vector ID) -> PureMT -> IO ()
-	applyLoveMatches v fends gen = applyMatches 0 (MB.length v) gen
+	applyLoveMatches :: MB.MVector RealWorld Person -> VB.Vector (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
+	applyLoveMatches v fends list = mapM (\(gen, (from, to)) -> applyMatches from to gen) list
 		where
 		applyMatches :: Int -> Int -> PureMT -> IO ()
 		applyMatches i max gen
 			| i >= max = return ()
 			| (not.alive) person = next
 			| V.null friends = next
-			| ((((==female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person) && ((not.V.null) potentialLovers) = do
-				i' <- (return $ m - start);
+			| ((((==female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person) = do
+				when ((not.V.null) potentialLovers) $ do
+					i' <- (return $ m - start);
 
-				p' <- MB.read v i';
-				p <- MB.read v i;
-				when (lover p' == 0) $ do
-					MB.write v i' (p' {lover = start + i});
-					MB.write v i (p {lover = m});
-
+					p' <- MB.read v i';
+					p <- MB.read v i;
+					when (lover p' == 0) $ do
+						MB.write v i' (p' {lover = start + i});
+						MB.write v i (p {lover = m});
 				next
 			| otherwise = next
 			where
@@ -203,20 +205,20 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 		| V.null potentialMates = (V.empty, gen)
 		| otherwise = (V.map (potentialMates !) $ randomInts (V.length potentialMates-1) ((timeStep*5),0), gen')
 		where
-			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture -- V.++ potentialProfessional V.++ potentialCulture
+			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional -- V.++ potentialCulture
 
 			randomNum = (timeStep*2, 0)
 			sameProfNum = (timeStep*2, offset randomNum)
 			sameCultNum = (timeStep*2, offset sameProfNum)
 			profNum = (timeStep, offset sameCultNum)
 			cultNum = (timeStep, offset profNum)
-			profNumInternal = (sizeProfessionals, offset cultNum)
-			cultNumInternal = (sizeCulturals, offset profNumInternal)
+			profNumInternal = (timeStep*2, offset cultNum)
+			cultNumInternal = (timeStep*2, offset profNumInternal)
+--			nrRandomNumbers = 20
+--			nrRandomNumbers = offset cultNumInternal
+			nrRandomNumbers = offset cultNum
 
 			offset (a,b) = a + b
-
-			sizeProfessionals = V.sum $ profs
-			sizeCulturals = V.sum $ cults
 
 			potentialRandom = g alivePeople randomNum
 			potentialSameProfessional = g prof sameProfNum
@@ -232,10 +234,11 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 				| otherwise = V.map (potential !) $ randomInts (V.length potential-1) profNum
 				where
 					potential :: Vector Int
-					potential = f 0 V.empty $ snd profNumInternal
+					potential = assert (V.sum profs <= fst profNumInternal) $ f 0 V.empty 0
+
 					f :: Int -> Vector Int -> Int -> Vector Int
 					f i v offset
-						| i >= VB.length professionals = v
+						| i >= V.length profs = v
 						| VB.null p || profs ! i <= 0 = v V.++ (f (i+1) v offset')
 						| otherwise = v V.++ result V.++ (f (i+1) v offset')
 						where
@@ -243,8 +246,8 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 							result = V.map (id.(p .!)) $ randomInts (VB.length p-1) ((profs ! i), offset)
 							offset' = offset + profs ! i
 							p = professionals .! i
-
-			profs = V.map (floor.(* (2 * int2Float timeStep))) $ professionalRelations .! (professionToInt $ profession person)
+			
+			profs = V.map (floor.(* (int2Float $ fst profNumInternal))) $ normalize $ professionalRelations .! (professionToInt $ profession person)
 
 			potentialCulture :: Vector Int
 			potentialCulture
@@ -252,10 +255,11 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 				| otherwise = V.map (potential !) $ randomInts (V.length potential-1) cultNum
 				where
 					potential :: Vector Int
-					potential = f 0 V.empty $ snd cultNumInternal
+					potential = assert (V.sum cults <= fst cultNumInternal) $ f 0 V.empty 0
+
 					f :: Int -> Vector Int -> Int -> Vector Int
 					f i v offset
-						| i >= VB.length culturals = v
+						| i >= V.length cults = v
 						| VB.null p || cults ! i <= 0 = v V.++ (f (i+1) v offset')
 						| otherwise = v V.++ result V.++ (f (i+1) v offset')
 						where
@@ -264,8 +268,9 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 							offset' = offset + cults ! i
 							p = culturals .! i
 
-			cults = V.map (floor.(* (2 * int2Float timeStep))) $ culturalRelations .! (cultureToInt $ culture person)
+			cults = V.map (floor.(* (int2Float $ fst cultNumInternal))) $ normalize $ culturalRelations .! (cultureToInt $ culture person)
 
+			normalize v = V.map (/ (V.sum v)) v
 
 --			randomInts :: Int -> Int -> PureMT -> VB.Vector Int
 --			randomInts size max gen = VB.map (floor.(* (int2Float max)).double2Float) $ randomVector_ size gen
@@ -274,7 +279,7 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 			randomInts max (size, from) = V.map (floor.(* (int2Float max)).double2Float) $ V.slice from size random
 
 			random :: Vector Double
-			(random, gen') = randomVector_ (offset cultNumInternal) gen
+			(random, gen') = randomVector_ nrRandomNumbers gen
 
 			prof :: VB.Vector Person
 			prof = professionals .! (professionToInt $ profession person)

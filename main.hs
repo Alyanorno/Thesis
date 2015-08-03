@@ -58,17 +58,24 @@ main = do
 			let (g,_,_) = generations seed 0 (read n) (p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty)
 			let g' = VB.filter alive g
 			let g'' = VB.filter (not.alive) g
+			let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ VB.length g')
+			let toProcent2 x = floor $ (*) 100 $ (int2Float x) / (int2Float $ VB.length g)
 			putStrLn ""
-			print $ VB.length g'
-			print $ VB.length g''
-			print $ VB.length $ VB.filter (((/=0).lover) .&&. ((<41).age)) g'
+			putStrLn $ "Total: " ++ (show $ VB.length g)
+			putStrLn $ "Alive: " ++ (show $ toProcent2 $ VB.length g') ++ "% "
+			putStrLn $ "Lover: " ++ (show $ toProcent $ VB.length $ VB.filter (((/=0).lover) .&&. ((<41).age)) g') ++ "%"
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g'' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ (VB.length $ VB.filter ((==female).gender) g', VB.length $ VB.filter ((==male).gender) g')
-			print $ VB.map VB.length $ toBuckets allCulturesVector (cultureToInt.culture) g'
-			print $ VB.map VB.length $ toBuckets allProfessionsVector (professionToInt.profession) g'
+			putStr "Cult:  "
+			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.VB.length) $ toBuckets allCulturesVector (cultureToInt.culture) g'
+			putStrLn ""
+			putStr "Prof:  "
+			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.VB.length) $ toBuckets allProfessionsVector (professionToInt.profession) g'
+			putStrLn ""
 
 	putStrLn "---------------------"
+	putStrLn ""
 
 	when (any (=="loop") args) $ do
 		main
@@ -94,7 +101,7 @@ genPopulationMap n1 n2 = do
 		forkIO $ do
 			h <- openBinaryFile name WriteMode
 			hPutStrLn h t
-			putStrLn $ "Done: " ++ name
+			putStrLn $ "Written: " ++ name
 			hClose h)
 		$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
 
@@ -110,10 +117,11 @@ genCultureMap n1 n2 = do
 		let !positions = [[((x,y), [f p c | c <- allCultures])  | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 --		hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 		t <- return $ concat $ map (foldr (\((x,y),c) list -> (show x) ++ " " ++ (show y) ++ " " ++ (setColour c) ++ "\n" ++ list) "") positions
-		h <- openBinaryFile name WriteMode
-		hPutStrLn h t
-		putStrLn $ "Done: " ++ name
-		hClose h)
+		forkIO $ do
+			h <- openBinaryFile name WriteMode
+			hPutStrLn h t
+			putStrLn $ "Written: " ++ name
+			hClose h)
 		$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
 
 setColour c
@@ -144,7 +152,7 @@ genProfessionMap n1 n2 = do
 		forkIO $ do
 			h <- openBinaryFile name WriteMode
 			hPutStrLn h t
-			putStrLn $ "Done: " ++ name
+			putStrLn $ "Written: " ++ name
 			hClose h)
 		$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
 
