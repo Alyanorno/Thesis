@@ -3,11 +3,11 @@
 import Prelude hiding (id)
 import GHC.Float
 
-import Data.Vector.Unboxed ((!), toList, Vector, snoc)
+import Data.Vector.Storable ((!), toList, Vector, snoc)
 import qualified Data.Vector as VB
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Mutable as MB
-import qualified Data.Vector.Unboxed.Mutable as M
+import qualified Data.Vector.Storable.Mutable as M
 
 import qualified Data.Array.Unboxed as A
 
@@ -55,23 +55,23 @@ main = do
 			putStrLn "Enter number of iterations: "
 			n <- getLine
 			let p = start peopleFromStart
-			let (g,_,_) = generations seed 0 (read n) (p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty)
-			let g' = VB.filter alive g
-			let g'' = VB.filter (not.alive) g
-			let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ VB.length g')
-			let toProcent2 x = floor $ (*) 100 $ (int2Float x) / (int2Float $ VB.length g)
+			let (g,_,_) = generations seed 0 (read n) (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
+			let g' = V.filter alive g
+			let g'' = V.filter (not.alive) g
+			let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g')
+			let toProcent2 x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g)
 			putStrLn ""
-			putStrLn $ "Total: " ++ (show $ VB.length g)
-			putStrLn $ "Alive: " ++ (show $ toProcent2 $ VB.length g') ++ "% "
-			putStrLn $ "Lover: " ++ (show $ toProcent $ VB.length $ VB.filter (((/=0).lover) .&&. ((<41).age)) g') ++ "%"
+			putStrLn $ "Total: " ++ (show $ V.length g)
+			putStrLn $ "Alive: " ++ (show $ toProcent2 $ V.length g') ++ "% "
+			putStrLn $ "Lover: " ++ (show $ toProcent $ V.length $ V.filter (((/=0).lover) .&&. ((<41).age)) g') ++ "%"
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g'' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --			print $ (VB.length $ VB.filter ((==female).gender) g', VB.length $ VB.filter ((==male).gender) g')
 			putStr "Cult:  "
-			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.VB.length) $ toBuckets allCulturesVector (cultureToInt.culture) g'
+			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.V.length) $ toBuckets allCulturesVector (cultureToInt.culture) g'
 			putStrLn ""
 			putStr "Prof:  "
-			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.VB.length) $ toBuckets allProfessionsVector (professionToInt.profession) g'
+			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.V.length) $ toBuckets allProfessionsVector (professionToInt.profession) g'
 			putStrLn ""
 
 	putStrLn "---------------------"
@@ -85,50 +85,47 @@ main = do
 
 
 
-genPopulationMap n1 n2 = do
-	let range = [read n1..read n2]
-	mapM_ (\(index, name) -> do
-		let p = start peopleFromStart
-		let (g,_,_) = generations seed 0 index (p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty)
-		let !g' = VB.filter alive g
-		let !positions = [[((x,y), VB.length $ VB.filter (\(x',y') -> x == x' && y == y') (VB.map position g')) | x <- [0..mapRange]] | y <- [0..mapRange]]
-		let f x--let r = x * 4 in if r > 255 then 255 else r
-			| x == 0 = 0
-			| x < 10 = 50
-			| x < 50 = 50 + x * 3
-			| otherwise = 200
-		t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
-		forkIO $ do
-			h <- openBinaryFile name WriteMode
-			hPutStrLn h t
-			putStrLn $ "Written: " ++ name
-			hClose h)
-		$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
+genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
+	let p = start peopleFromStart
+	let (g,_,_) = generations seed 0 index (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
+	let !g' = V.filter alive g
+	let !positions = [[((x,y), V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g')) | x <- [0..mapRange]] | y <- [0..mapRange]]
+	let f x--let r = x * 4 in if r > 255 then 255 else r
+		| x == 0 = 0
+		| x < 10 = 50
+		| x < 50 = 50 + x * 3
+		| otherwise = 200
+	t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
+--	forkIO $ do
+	h <- openBinaryFile name WriteMode
+	hPutStrLn h t
+	putStrLn $ "Written: " ++ name
+	hClose h)
+	$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
 
-genCultureMap n1 n2 = do
-	let range = [read n1..read n2]
-	mapM_ (\(index, name) -> do
-		let f p c
-			| VB.null p = 0
-			| otherwise = float2Int $ (int2Float $ VB.length $ VB.filter ((==c).culture) p) / (int2Float $ VB.length p) * 255
-		let p = start peopleFromStart
-		let (g,_,_) = generations seed 0 index ((p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty))
-		let !g' = VB.filter alive g
-		let !positions = [[((x,y), [f p c | c <- allCultures])  | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
---		hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
-		t <- return $ concat $ map (foldr (\((x,y),c) list -> (show x) ++ " " ++ (show y) ++ " " ++ (setColour c) ++ "\n" ++ list) "") positions
-		forkIO $ do
-			h <- openBinaryFile name WriteMode
-			hPutStrLn h t
-			putStrLn $ "Written: " ++ name
-			hClose h)
-		$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
+genCultureMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
+	let f p c
+		| V.null p = 0
+		| otherwise = float2Int $ (int2Float $ V.length $ V.filter ((==c).culture) p) / (int2Float $ V.length p) * 255
+	let p = start peopleFromStart
+	let (g,_,_) = generations seed 0 index ((p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty))
+	let !g' = V.filter alive g
+	let !positions = [[((x,y), [f p c | c <- allCultures])  | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
+--	hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
+	t <- return $ concat $ map (foldr (\((x,y),c) list -> (show x) ++ " " ++ (show y) ++ " " ++ (setColour c) ++ "\n" ++ list) "") positions
+--	forkIO $ do
+	h <- openBinaryFile name WriteMode
+	hPutStrLn h t
+	putStrLn $ "Written: " ++ name
+	hClose h)
+	$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
 
-setColour c
+setColour2 c
 	| c !! 2 > 0 = (show (c !! 2)) ++ " 0 0 255"
 	| otherwise = "0 0 0 0"
 
-setColour2 c
+setColour :: [Int] -> String
+setColour c
 	| foldr1 (+) c == 0 = "0 0 0 0"
 	| b == 0 = "255 0 0 255"
 	| b == 1 = "0 255 0 255"
@@ -138,23 +135,21 @@ setColour2 c
 		b = snd $ L.maximumBy (comparing fst) $ zip c [0..]
 
 
-genProfessionMap n1 n2 = do
-	let range = [read n1..read n2]
-	mapM_ (\(index, name) -> do
-		let f l
-			| VB.null l = 0
-			| otherwise = (VB.foldr (\x list -> list + ((*) 100 $ professionValue x)) 0 (VB.map profession l)) `div` (VB.length l)
-		let p = start peopleFromStart
-		let (g,_,_) = generations seed 0 index ((p, VB.replicate (VB.length p) V.empty, VB.replicate (VB.length p) V.empty))
-		let !g' = VB.filter alive g
-		let !positions = [[((x,y), f p) | x <- [0..mapRange], let p = VB.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
-		t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
-		forkIO $ do
-			h <- openBinaryFile name WriteMode
-			hPutStrLn h t
-			putStrLn $ "Written: " ++ name
-			hClose h)
-		$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
+genProfessionMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
+	let f :: People -> Int; f l
+		| V.null l = 0
+		| otherwise = (V.foldr (\x list -> list + ((*) 100 $ professionValue $ profession x)) 0 l) `div` (V.length l)
+	let p = start peopleFromStart
+	let (g,_,_) = generations seed 0 index ((p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty))
+	let !g' = V.filter alive g
+	let !positions = [[((x,y), f p) | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
+	t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
+--	forkIO $ do
+	h <- openBinaryFile name WriteMode
+	hPutStrLn h t
+	putStrLn $ "Written: " ++ name
+	hClose h)
+	$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
 
 
 
@@ -171,17 +166,17 @@ generations seed i n previous
 
 
 death :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-death gen (people, friends, childrens) = (VB.map f $ VB.zip people' $ r, friends', childrens')
+death gen (people, friends, childrens) = (V.zipWith f people' r, friends', childrens')
 	where
-		friends' = if VB.length friends - VB.length people' > 0 then VB.take (VB.length people') friends else friends
-		childrens' = if VB.length childrens - VB.length people' > 0 then VB.take (VB.length people') childrens else childrens
+		friends' = if VB.length friends - V.length people' > 0 then VB.take (V.length people') friends else friends
+		childrens' = if VB.length childrens - V.length people' > 0 then VB.take (V.length people') childrens else childrens
 
-		r = VB.fromList $ map double2Float $ take (VB.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
+		r = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		(_,people') = VB.break ((<80).age) $ VB.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
-		f :: (Person, Float) -> Person
-		f (p,r)
+		(_,people') = V.break ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
+		f :: Person -> Float -> Person
+		f p r
 			| a < 20 = if r < 0.97 then p else p {dead = 1} 
 			| a < 30 = if r < 0.99 then p else p {dead = 1}
 			| a < 40 = if r < 0.99 then p else p {dead = 1}

@@ -5,11 +5,11 @@ module Stuff where
 import Prelude hiding (id)
 import GHC.Float
 
-import Data.Vector.Unboxed ((!), toList, Vector, snoc)
+import Data.Vector.Storable ((!), toList, Vector, snoc)
 import qualified Data.Vector as VB
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Mutable as MB
-import qualified Data.Vector.Unboxed.Mutable as M
+import qualified Data.Vector.Storable.Mutable as M
 
 import qualified Data.Array.Unboxed as A
 
@@ -35,8 +35,6 @@ import Control.Exception.Base (assert)
 {-# INLINE (.||.) #-}
 (.||.) f g !a = (f a) || (g a)
 
---data Culture = Brahmatic | Endorphi deriving (Show, Eq, Enum, Bounded)
---type Cultures = [Culture]
 newtype Culture = Culture {fromCulture :: Word8} deriving (Show, Eq)
 (brahmatic:endorphi:uppbrah:_) = map Culture [0..]
 allCultures = [brahmatic, endorphi, uppbrah]
@@ -65,38 +63,30 @@ data Person = Person {
 	gender :: {-# UNPACK #-} !Gender,
 	profession :: {-# UNPACK #-} !Profession,
 	culture :: {-# UNPACK #-} !Culture,
-	-- Unique number used to identifiy person, people are always stored in order
 	age :: {-# UNPACK #-} !Int,
+	-- Unique number used to identifiy person, people are always stored in order
 	id :: {-# UNPACK #-} !ID,
 	-- A zero means no lover
 	lover :: {-# UNPACK #-} !ID,
 	parrents :: {-# UNPACK #-} !(ID, ID),
---	children :: {-# UNPACK #-} !(Vector ID),
---	friends :: {-# UNPACK #-} !(Vector ID),
 	-- Below a certain age this attribute is ignored
 	position :: {-# UNPACK #-} !(Int, Int)
 	} deriving (Show)
-type People = VB.Vector Person
-
-word32ToWord8 :: Word32 -> Word8
-word32ToWord8 a = fromIntegral a
-
-word8ToWord32 :: Word8 -> Word32
-word8ToWord32 a = fromIntegral a
+type People = Vector Person
 
 instance Storable Person where
-	sizeOf _ = sizeOf (undefined :: Int32) * 7 + sizeOf (undefined :: Word32)
-	alignment _ = alignment (undefined :: Word32)
+	sizeOf _ = sizeOf (undefined :: Int32) * 8
+	alignment _ = alignment (undefined :: Int32)
 
 	{-# INLINE peek #-}
 	peek p = do
-		let q = castPtr p
-		t <- peekElemOff q 0
-		let f i = word32ToWord8 $ shiftR t (8*i)
-		dead <- return $ f 0
-		gender <- return $ f 1
-		profession <- return $ f 2
-		culture <- return $ f 3
+		let q2 = castPtr p :: Ptr Word8
+		dead <- peekElemOff q2 0
+		gender <- peekElemOff q2 1
+		profession <- peekElemOff q2 2
+		culture <- peekElemOff q2 3
+
+		let q = castPtr p :: Ptr Int32
 		age <- peekElemOff q 1
 		id <- peekElemOff q 2
 		lover <- peekElemOff q 3
@@ -104,19 +94,25 @@ instance Storable Person where
 		parrents2 <- peekElemOff q 5
 		position1 <- peekElemOff q 6
 		position2 <- peekElemOff q 7
-		return (Person dead (Gender gender) (Profession profession) (Culture culture) age id lover (parrents1, parrents2) (position1, position2))
+		return (Person dead (Gender gender) (Profession profession) (Culture culture) (fromIntegral age) (fromIntegral id) (fromIntegral lover) (fromIntegral parrents1, fromIntegral parrents2) (fromIntegral position1, fromIntegral position2))
 
 	{-# INLINE poke #-}
 	poke p (Person dead gender profession culture age id lover (parrents1, parrents2) (position1, position2)) = do
-		let q = castPtr p
-		pokeElemOff q 0 $ let (<<) = shiftL in (word8ToWord32 dead) .|. ((word8ToWord32 $ fromGender gender) << 8) .|. ((word8ToWord32 $ fromProfession profession) << 16) .|. ((word8ToWord32 $ fromCulture culture) << 24)
-		pokeElemOff q 1 age
-		pokeElemOff q 2 id
-		pokeElemOff q 3 lover
-		pokeElemOff q 4 parrents1
-		pokeElemOff q 5 parrents2
-		pokeElemOff q 6 position1
-		pokeElemOff q 7 position2
+		let q2 = castPtr p :: Ptr Word8
+		pokeElemOff q2 0 dead
+		pokeElemOff q2 1 $ fromGender gender
+		pokeElemOff q2 2 $ fromProfession profession
+		pokeElemOff q2 3 $ fromCulture culture
+
+		let q = castPtr p :: Ptr Int32
+		pokeElemOff q 1 (fromIntegral age :: Int32)
+		pokeElemOff q 2 (fromIntegral id :: Int32)
+		pokeElemOff q 3 (fromIntegral lover :: Int32)
+		pokeElemOff q 4 (fromIntegral parrents1 :: Int32)
+		pokeElemOff q 5 (fromIntegral parrents2 :: Int32)
+		pokeElemOff q 6 (fromIntegral position1 :: Int32)
+		pokeElemOff q 7 (fromIntegral position2 :: Int32)
+
 
 instance Eq Person where
 	p1 == p2 = id p1 == id p2
@@ -146,10 +142,10 @@ type RandomGenerator = Xorshift
 
 {-# INLINE (&!) #-}
 (&!) :: People -> ID -> Person
-(&!) people i = people .! (i - (id $ VB.head people))
+(&!) people i = people ! (i - (id $ V.head people))
 
 safeAccess :: People -> Int -> (Bool, Person)
-safeAccess people i = let ix = i - (id $ VB.head people) in if i < id (VB.head people) then (False, VB.head people) else (True, people .! ix)
+safeAccess people i = let ix = i - (id $ V.head people) in if i < id (V.head people) then (False, V.head people) else (True, people ! ix)
 
 {-# INLINE (.!) #-}
 (.!) :: VB.Vector a -> Int -> a
@@ -183,7 +179,7 @@ rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 
 start :: Int -> People
-start a = let off = a * 3 in VB.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
+start a = let off = a * 3 in V.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
 	where
 		f i max
 			| i >= float2Int ((int2Float) max * 0.75) = 0

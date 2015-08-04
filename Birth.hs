@@ -5,11 +5,11 @@ module Birth (birth) where
 
 import Prelude hiding (id)
 
-import Data.Vector.Unboxed ((!), toList, Vector, snoc)
+import Data.Vector.Storable ((!), toList, Vector, snoc)
 import qualified Data.Vector as VB
-import qualified Data.Vector.Unboxed as V
+import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Mutable as MB
-import qualified Data.Vector.Unboxed.Mutable as M
+import qualified Data.Vector.Storable.Mutable as M
 
 import qualified Data.Array.Unboxed as A
 
@@ -23,16 +23,16 @@ import Change
 
 
 birth :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-birth gen (people, friends, childrens) = (people VB.++ add, friends VB.++ VB.replicate (VB.length add) V.empty, c)
+birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, c)
 	where
-		add = VB.fromList $ concat babies
+		add = V.fromList $ concat babies
 		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
 			where
 				f :: [Person] -> [(Int, [ID])]
 				f person = [(p1-offset, b), (p2-offset, b)]
 					where 
 						(p1, p2) = (parrents.head) person
-						offset = id $ VB.head people
+						offset = id $ V.head people
 						b = map id person
 
 		babies :: [[Person]]
@@ -45,7 +45,7 @@ birth gen (people, friends, childrens) = (people VB.++ add, friends VB.++ VB.rep
 
 		babyMakers :: [Person]
 --		babyMakers = VB.toList $ VB.filter (\a -> f (safeAccess p (lover a)) a) people
-		babyMakers = VB.toList $ VB.filter conditions people
+		babyMakers = V.toList $ V.filter conditions people
 			where 
 				f :: (Bool, Person) -> Person -> Bool
 				f (safe, l) a
@@ -59,7 +59,7 @@ birth gen (people, friends, childrens) = (people VB.++ add, friends VB.++ VB.rep
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
 
 		ids = [start..start + foldr1 (+) numberOfBabies]
-		start = ((+1).id.VB.last) people
+		start = ((+1).id.V.last) people
 
 
 makeBaby :: ID -> (ID, ID) -> Culture -> Person
