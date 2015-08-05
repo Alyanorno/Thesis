@@ -3,7 +3,7 @@
 import Prelude hiding (id)
 import GHC.Float
 
-import Data.Vector.Storable ((!), toList, Vector, snoc)
+import Data.Vector.Storable (toList, Vector, snoc)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Mutable as MB

@@ -5,7 +5,7 @@ module Stuff where
 import Prelude hiding (id)
 import GHC.Float
 
-import Data.Vector.Storable ((!), toList, Vector, snoc)
+import Data.Vector.Storable (toList, Vector, snoc)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Mutable as MB
@@ -29,6 +29,9 @@ import System.Random.Mersenne.Pure64 as R
 import Control.Monad.ST
 import Control.Exception.Base (assert)
 
+
+{-# INLINE (!) #-}
+(!) v i = V.unsafeIndex v i
 
 {-# INLINE (.&&.) #-}
 (.&&.) f g !a = (f a) && (g a)
@@ -142,14 +145,16 @@ type RandomGenerator = Xorshift
 
 {-# INLINE (&!) #-}
 (&!) :: People -> ID -> Person
-(&!) people i = people ! (i - (id $ V.head people))
+(&!) people i = V.unsafeIndex people (i - (id $ V.head people))
+--(&!) people i = people ! (i - (id $ V.head people))
 
 safeAccess :: People -> Int -> (Bool, Person)
 safeAccess people i = let ix = i - (id $ V.head people) in if i < id (V.head people) then (False, V.head people) else (True, people ! ix)
 
 {-# INLINE (.!) #-}
 (.!) :: VB.Vector a -> Int -> a
-(.!) v i = v VB.! i
+(.!) v i = VB.unsafeIndex v i
+--(.!) v i = v VB.! i
 
 randomVector :: Int -> PureMT -> Vector Int64
 randomVector n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
