@@ -93,10 +93,10 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 						$ allCulturesVector
 
 				concentrationOfPeopleMap :: Vector Float
-				concentrationOfPeopleMap = V.convert $ VB.map (scaleConcentrationOfPeople.fromIntegral.V.length) peopleMap
+				concentrationOfPeopleMap = V.generate (VB.length peopleMap) (\i -> (scaleConcentrationOfPeople.fromIntegral.V.length) (peopleMap .! i))
 
 				culturalMap :: VB.Vector (Vector Float)
-				culturalMap = VB.map (\i -> boxFilter $ V.convert $ VB.map (scaleCulturalMap.(f i)) peopleMap) $ allCulturesVector
+				culturalMap = VB.map (\i -> boxFilter $ V.generate (VB.length peopleMap) (\l -> (scaleCulturalMap.(f i)) (peopleMap .! l))) $ allCulturesVector
 					where 
 						f i p = let m = V.map (relationsTo i) p; l = (V.length m) in if l == 0 then 0 else (V.sum m) / int2Float l
 
@@ -105,8 +105,16 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 
 				peopleMap :: VB.Vector (Vector ID)
 				peopleMap = VB.unsafeAccumulate V.snoc (VB.replicate (V.length positionMap) V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert alivePeople
-					where 
-						f p = (((\(x,y) -> x + y * range).position) p, id p)
+					where f p = (((\(x,y) -> x + y * range).position) p, id p)
+{-				peopleMap = VB.fromList $ loopPartition 0 (V.length positionMap) $ V.map f $ V.filter ((/=(0,0)).position) alivePeople
+					where
+					loopPartition :: Int -> Int -> Vector (Int, ID) -> [(Vector ID)]
+					loopPartition i max p
+						| i < max = let (a,b) = V.unstablePartition ((==max).fst) p in V.map snd a : loopPartition (i+1) max b
+						| otherwise = []
+
+					f p = (((\(x,y) -> x + y * range).position) p, id p) -}
+
 
 				positionMap :: Vector (Int, Int)
 				positionMap = V.fromList [(x,y) | x <- [0..range-1], y <- [0..range-1]]

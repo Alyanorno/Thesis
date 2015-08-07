@@ -88,20 +88,22 @@ main = do
 genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
 	let p = start peopleFromStart
 	let (g,_,_) = generations seed 0 index (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
-	let !g' = V.filter alive g
-	let !positions = [[((x,y), V.length $ V.filter (\(x',y') -> x == x' && y == y') (V.map position g')) | x <- [0..mapRange]] | y <- [0..mapRange]]
+	let g' = V.filter alive g
+	let positions = let list = V.filter (/=(0,0)) $ V.map position g' in [[((x,y), V.length $ V.filter (\(x',y') -> x == x' && y == y') list) | x <- [0..mapRange]] | y <- [0..mapRange]]
 	let f x--let r = x * 4 in if r > 255 then 255 else r
 		| x == 0 = 0
 		| x < 10 = 50
 		| x < 50 = 50 + x * 3
 		| otherwise = 200
-	t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
+	let toText :: ((Int, Int), Int) -> String; toText ((x, y), a) = (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n"
+	t <- return $ concat $ map toText $ concat $ positions
 --	forkIO $ do
 	h <- openBinaryFile name WriteMode
 	hPutStrLn h t
 	putStrLn $ "Written: " ++ name
 	hClose h)
 	$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
+
 
 genCultureMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
 	let f p c
