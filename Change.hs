@@ -20,7 +20,7 @@ import Data.List.Split (chunksOf)
 import qualified Data.List as L
 import Foreign.Storable.Tuple
 
-import Data.Int (Int64)
+import Data.Int (Int32, Int64)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
@@ -40,7 +40,7 @@ import Stuff
 
 
 
-change :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+change :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople friends).(home alivePeople).(job alivePeople)) people in (p, f, childrens)
 	where
 		alivePeople = V.filter alive people
@@ -74,7 +74,7 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 				random = randomVector (V.length p) (pureMT $ fromIntegral $ fromXorshift gen)
 
 				center :: (Float, Float)
-				center = let l = V.filter (/=(0,0)) $ V.map position $ alivePeople in (\(x,y)->((int2Float x)/(int2Float $ V.length l), (int2Float y)/(int2Float $ V.length l))) $ V.foldr (\(x,y)(x',y')->(x+x',y+y')) (0,0) l
+				center = let l = V.filter (/=(0,0)) $ V.map position $ alivePeople in (\(x,y)->((fromIntegral x)/(int2Float $ V.length l), (fromIntegral y)/(int2Float $ V.length l))) $ V.foldr (\(x,y)(x',y')->(x+x',y+y')) (0,0) l
 
 		maps :: VB.Vector (Vector Float)
 		maps = VB.map perCulture allCulturesVector
@@ -87,9 +87,9 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 				distanceFromCulturalCenter = VB.map (V.map scaleDistanceFromCulturalCenter) $
 					VB.map (\i -> let
 						peoplePos = V.map (position.(people &!)) $ cultureBuckets .! i
-						average (x,y) = let l = V.length peoplePos in if l == 0 then (0,0) else ((int2Float x) / (int2Float $ V.length peoplePos), (int2Float y) / (int2Float $ V.length peoplePos))
+						average :: (Int32,Int32) -> (Float,Float); average (x,y) = let l = V.length peoplePos in if l == 0 then (0,0) else ((fromIntegral x) / (int2Float $ V.length peoplePos), (fromIntegral y) / (int2Float $ V.length peoplePos))
 						culturalCenter = average $ V.foldr (\(x,y) (x',y') -> (x+x',y+y')) (0,0) peoplePos
-						in V.map ((distanceTo $ culturalCenter).toFloat) positionMap)
+						in V.map ((distanceTo culturalCenter).toFloat) positionMap)
 						$ allCulturesVector
 
 				concentrationOfPeopleMap :: Vector Float
@@ -105,7 +105,7 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 
 				peopleMap :: VB.Vector (Vector ID)
 				peopleMap = VB.unsafeAccumulate V.snoc (VB.replicate (V.length positionMap) V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert alivePeople
-					where f p = (((\(x,y) -> x + y * range).position) p, id p)
+					where f p = ((fromIntegral.(\(x,y) -> x + y * range).position) p, id p)
 {-				peopleMap = VB.fromList $ loopPartition 0 (V.length positionMap) $ V.map f $ V.filter ((/=(0,0)).position) alivePeople
 					where
 					loopPartition :: Int -> Int -> Vector (Int, ID) -> [(Vector ID)]
@@ -116,7 +116,7 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 					f p = (((\(x,y) -> x + y * range).position) p, id p) -}
 
 
-				positionMap :: Vector (Int, Int)
+				positionMap :: Vector (Int32, Int32)
 				positionMap = V.fromList [(x,y) | x <- [0..range-1], y <- [0..range-1]]
 
 		range = mapRange -- defined in Stuff.hs
@@ -139,7 +139,7 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 		culturalRelations = relationsBetween gen people numberCultures (cultureToInt.culture) cultureBuckets sampleSize
 
 
-createRelations :: RandomGenerator -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
+createRelations :: Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
 createRelations gen friends people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = V.length people
 	-- If fixed the result will not change depending on number of threads
@@ -165,17 +165,20 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 		applyMatches :: Int -> Int -> PureMT -> IO ()
 		applyMatches i max gen
 			| i >= max = return ()
-			| (not.alive) (people ! i) = applyMatches (i+1) max gen
+			| (not.alive) person = applyMatches (i+1) max gen
 			| otherwise = do
 				friend <- MB.read friends i;
-				if V.length friend + V.length m < 200 then do
+--				if V.length friend + V.length m < 200 then do
+				if V.length friend + V.length m < 100 + (((fromIntegral.fromXorshift.step.Xorshift .fromID.id) person) `rem` 200) then do
 					MB.write friends i (friend V.++ m);
 				else do
 					MB.write friends i ((V.drop (V.length m) friend) V.++ m);
 				applyMatches (i+1) max gen'
 			where
+			person = people ! i
+
 			m :: Vector ID
-			(m, gen') = match (people ! i) gen
+			(m, gen') = match person gen
 
 	applyLoveMatches :: MVar (M.MVector RealWorld Person) -> VB.Vector (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
 --	applyLoveMatches vRef fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
@@ -188,13 +191,13 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 			| V.null friends = next
 			| ((((==female).gender) .&&. ((==0).lover) .&&. ((<41).age)) person) = do
 				when ((not.V.null) potentialLovers) $ do
-					i' <- (return $ m - start);
+					i' <- (return $ fromID $ m - start);
 
 					withMVar vRef (\v -> do
 						p' <- M.read v i';
 						p <- M.read v i;
 						when (lover p' == 0 && lover p == 0) $ do
-							M.write v i' (p' {lover = start + i});
+							M.write v i' (p' {lover = start + (toID i)});
 							M.write v i (p {lover = m});)
 				next
 			| otherwise = next
@@ -233,7 +236,7 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 			potentialProfessional :: Vector ID
 			potentialProfessional = assert (V.sum profs <= V.length random) $ f 0 V.empty 0
 				where
-					f :: Int -> Vector Int -> Int -> Vector Int
+					f :: Int -> Vector ID -> Int -> Vector ID
 					f i v offset
 						| i >= V.length profs = v
 						| V.null p || profs ! i <= 0 = v V.++ (f (i+1) v offset')
@@ -246,10 +249,10 @@ createRelations gen friends people alivePeople professionals professionalRelatio
 			
 			profs = V.map (floor.(* (int2Float $ timeStep*2))) $ normalize $ professionalRelations .! (professionToInt $ profession person)
 
-			potentialCulture :: Vector Int
+			potentialCulture :: Vector ID
 			potentialCulture = assert (V.sum cults <= V.length random) $ f 0 V.empty 0
 				where
-					f :: Int -> Vector Int -> Int -> Vector Int
+					f :: Int -> Vector ID -> Int -> Vector ID
 					f i v offset
 						| i >= V.length cults = v
 						| V.null p || cults ! i <= 0 = v V.++ (f (i+1) v offset')
@@ -285,16 +288,16 @@ getAJob people chans person random
 	| profession person == none = person {profession = f allProfessions random chans}
 	| otherwise = person
 	where
-	i = (professionToInt.profession.(people !).snd.parrents) person
+	i = (professionToInt.profession.(people !).fromID.snd.parrents) person
 	chans' = (take i chans) ++ ((chans' !! i) + 0.2) : (drop (i+1) chans)
 
 	f prof random chans
-		| chans !! 0 >= random ! 0 = prof !! 0
-		| chans !! 1 >= random ! 1 = prof !! 1
+		| chans !! 0 >= random ! (0 :: Int) = prof !! 0
+		| chans !! 1 >= random ! (1 :: Int) = prof !! 1
 		| otherwise = prof !! 2
 
 
-getAHome :: Int -> (Float,Float) -> VB.Vector (Vector Float) -> Person -> (Int,Int) -> RandomGenerator -> Person
+getAHome :: Int32 -> (Float,Float) -> VB.Vector (Vector Float) -> Person -> (Int32,Int32) -> Xorshift -> Person
 getAHome range center maps person parrentPosition gen
 	| ((>10).age) .&&. ((/=0).lover) .&&. ((==(0,0)).position) $ person = theHome
 	| otherwise = person
@@ -320,7 +323,7 @@ toBuckets buckets test list = (VB.map (f list) buckets) `using` (parVector 1) --
 -- Take a sample of x size from each group
 -- Count number of lovers from that sample to each other group
 -- Calculate percentage based number of lovers to each group
-relationsBetween :: RandomGenerator -> People -> Int -> (Person -> Int) -> VB.Vector (Vector ID) -> Int -> VB.Vector (Vector Float)
+relationsBetween :: Xorshift -> People -> Int -> (Person -> Int) -> VB.Vector (Vector ID) -> Int -> VB.Vector (Vector Float)
 relationsBetween gen people sizeGroup getGroup groupBuckets sampleSize = VB.map procentOfLovers numberOfLovers
 	where
 	procentOfLovers :: Vector Int -> Vector Float
@@ -328,8 +331,7 @@ relationsBetween gen people sizeGroup getGroup groupBuckets sampleSize = VB.map 
 		where total = fromIntegral $ V.foldr1 (+) list
 
 	numberOfLovers :: VB.Vector (Vector Int)
-	numberOfLovers = VB.fromList [V.fromList [lovers s j | j <- list] | i <- list, let s = statisticalSample i]
-		where list = [0..sizeGroup-1]
+	numberOfLovers = VB.generate sizeGroup (\i -> let s = statisticalSample i in V.generate sizeGroup (\j -> lovers s j))
 
 	lovers :: Vector ID -> Int -> Int
 	lovers list i = V.length $ V.filter ((==i).getGroup.(people &!).lover) $ V.filter (((/=0).lover) .&&. (((id $ V.head people)<).lover)) $ V.map (people &!) list

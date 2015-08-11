@@ -14,8 +14,8 @@ import qualified Data.Array.Unboxed as A
 import qualified Data.List as L
 import Data.List.Split (chunksOf)
 
+import Data.Int (Int32, Int64)
 import Data.Ord
-import Data.Int (Int64)
 import Data.Maybe (isNothing, isJust, fromJust)
 import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
@@ -95,7 +95,7 @@ genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name)
 		| x < 10 = 50
 		| x < 50 = 50 + x * 3
 		| otherwise = 200
-	let toText :: ((Int, Int), Int) -> String; toText ((x, y), a) = (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n"
+	let toText :: ((Int32, Int32), Int) -> String; toText ((x, y), a) = (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n"
 	t <- return $ concat $ map toText $ concat $ positions
 --	forkIO $ do
 	h <- openBinaryFile name WriteMode
@@ -167,7 +167,7 @@ generations seed i n previous
 		gen = Xorshift $ (randomRs (minBound :: Int64, maxBound :: Int64) seed :: [Int64]) !! i
 
 
-death :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+death :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 death gen (people, friends, childrens) = (V.zipWith f people' r, friends', childrens')
 	where
 		friends' = if VB.length friends - V.length people' > 0 then VB.take (V.length people') friends else friends

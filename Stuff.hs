@@ -16,8 +16,9 @@ import qualified Data.Array.Unboxed as A
 import Data.List.Split (chunksOf)
 import qualified Data.List as L
 
-import Foreign.Storable
 import Foreign.Ptr
+import Foreign.Storable
+import qualified Foreign.Storable.Newtype as Store
 import Data.Int
 import Data.Word
 import Data.Bits
@@ -26,12 +27,10 @@ import Data.Function (fix)
 import Data.Bits (xor, shiftL, shiftR)
 import System.Random
 import System.Random.Mersenne.Pure64 as R
+import Control.Monad (liftM)
 import Control.Monad.ST
 import Control.Exception.Base (assert)
 
-
-{-# INLINE (!) #-}
-(!) v i = V.unsafeIndex v i
 
 {-# INLINE (.&&.) #-}
 (.&&.) f g !a = (f a) && (g a)
@@ -54,7 +53,20 @@ allProfessionsVector = VB.fromList ([0,1,2,3] :: [Int])
 professionToInt :: Profession -> Int
 professionToInt (Profession p) = fromIntegral p
 
-type ID = Int
+newtype ID = ID Int32 deriving (Show, Eq, Ord, Num)
+{-# INLINE fromID #-}
+fromID (ID id) = fromIntegral id
+{-# INLINE toID #-}
+toID id = ID $ fromIntegral id
+
+instance Storable ID where
+	sizeOf _ = sizeOf (undefined :: Int32)
+	alignment _ = sizeOf (undefined :: Int32)
+	{-# INLINE peek #-}
+	peek p = liftM ID (peekElemOff (castPtr p :: Ptr Int32) 0)
+	{-# INLINE poke #-}
+	poke p (ID id) = pokeElemOff (castPtr p :: Ptr Int32) 0 id
+
 --data Gender = Male | Female deriving (Show, Eq, Enum)
 newtype Gender = Gender {fromGender :: Word8} deriving (Show, Eq)
 (male:female:_) = map Gender ([0..] :: [Word8])
@@ -66,14 +78,14 @@ data Person = Person {
 	gender :: {-# UNPACK #-} !Gender,
 	profession :: {-# UNPACK #-} !Profession,
 	culture :: {-# UNPACK #-} !Culture,
-	age :: {-# UNPACK #-} !Int,
+	age :: {-# UNPACK #-} !Int32,
 	-- Unique number used to identifiy person, people are always stored in order
 	id :: {-# UNPACK #-} !ID,
 	-- A zero means no lover
 	lover :: {-# UNPACK #-} !ID,
 	parrents :: {-# UNPACK #-} !(ID, ID),
 	-- Below a certain age this attribute is ignored
-	position :: {-# UNPACK #-} !(Int, Int)
+	position :: {-# UNPACK #-} !(Int32, Int32)
 	} deriving (Show)
 type People = Vector Person
 
@@ -108,13 +120,13 @@ instance Storable Person where
 		pokeElemOff q2 3 $ fromCulture culture
 
 		let q = castPtr p :: Ptr Int32
-		pokeElemOff q 1 (fromIntegral age :: Int32)
-		pokeElemOff q 2 (fromIntegral id :: Int32)
-		pokeElemOff q 3 (fromIntegral lover :: Int32)
-		pokeElemOff q 4 (fromIntegral parrents1 :: Int32)
-		pokeElemOff q 5 (fromIntegral parrents2 :: Int32)
-		pokeElemOff q 6 (fromIntegral position1 :: Int32)
-		pokeElemOff q 7 (fromIntegral position2 :: Int32)
+		pokeElemOff q 1 (age :: Int32)
+		pokeElemOff q 2 (fromID id :: Int32)
+		pokeElemOff q 3 (fromID lover :: Int32)
+		pokeElemOff q 4 (fromID parrents1 :: Int32)
+		pokeElemOff q 5 (fromID parrents2 :: Int32)
+		pokeElemOff q 6 (position1 :: Int32)
+		pokeElemOff q 7 (position2 :: Int32)
 
 
 instance Eq Person where
@@ -141,20 +153,21 @@ instance RandomGen Xorshift where
 	genRange a = (fromEnum (asTypeOf minBound a), fromEnum (asTypeOf maxBound a))
 
 
-type RandomGenerator = Xorshift
+
+{-# INLINE (!) #-}
+(!) v i = V.unsafeIndex v $ fromIntegral i
+
+{-# INLINE (.!) #-}
+(.!) :: (Integral i) => VB.Vector a -> i -> a
+(.!) v i = VB.unsafeIndex v $ fromIntegral i
 
 {-# INLINE (&!) #-}
 (&!) :: People -> ID -> Person
-(&!) people i = V.unsafeIndex people (i - (id $ V.head people))
---(&!) people i = people ! (i - (id $ V.head people))
+(&!) people i = V.unsafeIndex people $ fromID (i - (id $ V.head people))
 
-safeAccess :: People -> Int -> (Bool, Person)
-safeAccess people i = let ix = i - (id $ V.head people) in if i < id (V.head people) then (False, V.head people) else (True, people ! ix)
+safeAccess :: People -> ID -> (Bool, Person)
+safeAccess people i = let ix = i - (id $ V.head people) in if i < id (V.head people) then (False, V.head people) else (True, people ! (fromID ix))
 
-{-# INLINE (.!) #-}
-(.!) :: VB.Vector a -> Int -> a
-(.!) v i = VB.unsafeIndex v i
---(.!) v i = v VB.! i
 
 randomVector :: Int -> PureMT -> Vector Int64
 randomVector n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
@@ -176,33 +189,34 @@ randomVector_ n g = if n <= 0 then (V.empty, g) else runST $ do { v <- M.new n; 
 			| otherwise = return g
 
 
-rescale :: Int -> Int -> Int -> Int
-rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY) / (fromIntegral maxX))
+--rescale :: Int -> Int -> Int -> Int
+rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY :: Float) / (fromIntegral maxX :: Float))
 
-rescale_ :: Int -> Float -> Int -> Float
+--rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 
 start :: Int -> People
-start a = let off = a * 3 in V.fromList $ (take off $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age i (if i >= a then 0 else 1) (if i >= a then (1+i-a,1+i-a) else (0,0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = f (i-off) a]
+start a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
 	where
+		f :: Int -> Int -> Int
 		f i max
-			| i >= float2Int ((int2Float) max * 0.75) = 0
-			| i >= float2Int ((int2Float) max * 0.30) = 20
-			| i >= float2Int ((int2Float) max * 0.10) = 40
+			| i >= floor ((fromIntegral max :: Float) * 0.75) = 0
+			| i >= floor ((fromIntegral max :: Float) * 0.30) = 20
+			| i >= floor ((fromIntegral max :: Float) * 0.10) = 40
 			| otherwise = 60
 		infinitly x = cycle $ concat $ zipWith (\a b -> a : b : []) x x
 
 distanceTo :: (Float,Float) -> (Float,Float) -> Float
 distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
 
-toFloat :: (Int,Int) -> (Float,Float)
+toFloat :: (Integral i) => (i,i) -> (Float,Float)
 toFloat (x,y) = (fromIntegral x, fromIntegral y)
 
 infinity :: Float
 infinity = 1 / 0
 
-mapRange :: Int
+mapRange :: Int32
 mapRange = 50
 
 timeStep :: Int
@@ -281,7 +295,7 @@ staticTerrainMap = V.fromList $ [base ! ((rescale mapRange 50 x) + (rescale mapR
 		where
 			fromRelativePosition :: (Float, Float) -> Int
 			fromRelativePosition (x,y) = (float2Int (x * m)) + (float2Int (y * m * m))
-				where m = int2Float mapRange
+				where m :: Float; m = fromIntegral mapRange
 
 
 staticProfessionalRelations :: VB.Vector (Vector Float)
@@ -295,7 +309,7 @@ professionValue prof
 	| otherwise = 0
 
 boxFilter :: Vector Float -> Vector Float
-boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-mapRange) + (f $ i+mapRange) / 5)) list
+boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-(fromIntegral mapRange)) + (f $ i+(fromIntegral mapRange)) / 5)) list
 	where
 		access a i = if i < 0 || i >= V.length list then a else list ! i
 

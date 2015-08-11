@@ -5,6 +5,8 @@ module Birth (birth) where
 
 import Prelude hiding (id)
 
+import Data.Int (Int32)
+
 import Data.Vector.Storable (toList, Vector, snoc)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Storable as V
@@ -22,14 +24,14 @@ import Change
 
 
 
-birth :: RandomGenerator -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+birth :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, c)
 	where
 		add = V.fromList $ concat babies
 		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
 			where
 				f :: [Person] -> [(Int, [ID])]
-				f person = [(p1-offset, b), (p2-offset, b)]
+				f person = [(fromID $ p1-offset, b), (fromID $ p2-offset, b)]
 					where 
 						(p1, p2) = (parrents.head) person
 						offset = id $ V.head people
@@ -59,10 +61,10 @@ birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.repl
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
 
 		ids = [start..start + foldr1 (+) numberOfBabies]
-		start = ((+1).id.V.last) people
+		start = fromID $ ((+1).id.V.last) people
 
 
-makeBaby :: ID -> (ID, ID) -> Culture -> Person
-makeBaby id' parrents' culture' = Person 0 (if mod id' 2 == 0 then male else female) none culture' 0 id' 0 parrents' (0,0)
+makeBaby :: Int -> (ID, ID) -> Culture -> Person
+makeBaby id' parrents' culture' = Person 0 (if mod id' 2 == 0 then male else female) none culture' 0 (toID id') 0 parrents' (0,0)
 
 
