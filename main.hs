@@ -179,23 +179,24 @@ death gen (people, friends, childrens) = (V.zipWith f people' r, friends', child
 		(_,people') = V.break ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
 		f :: Person -> Float -> Person
 		f p r
-			| a < 20 = if r < 0.97 then p else p {dead = 1} 
+{-			| a < 20 = if r < 0.97 then p else p {dead = 1} 
 			| a < 30 = if r < 0.99 then p else p {dead = 1}
 			| a < 40 = if r < 0.99 then p else p {dead = 1}
 			| a < 50 = if r < 0.98 then p else p {dead = 1}
 			| a < 60 = if r < 0.97 then p else p {dead = 1}
 			| a < 70 = if r < 0.95 then p else p {dead = 1}
 			| a < 80 = if r < 0.90 then p else p {dead = 1}
---			| otherwise = p {dead = 1}
-			where a = age p
-{-			| a < 20 = if r < 0.97 .^ timeStep' then p else p {alive = False} 
-			| a < 30 = if r < 0.99 .^ timeStep' then p else p {alive = False}
-			| a < 40 = if r < 0.99 .^ timeStep' then p else p {alive = False}
-			| a < 50 = if r < 0.98 .^ timeStep' then p else p {alive = False}
-			| a < 60 = if r < 0.97 .^ timeStep' then p else p {alive = False}
-			| a < 70 = if r < 0.95 .^ timeStep' then p else p {alive = False}
-			| otherwise = p {alive = False}
-			where a = age p; (.^) a b = (**) a b -}
+			| otherwise = p {dead = 1}
+			where a = age p-}
+			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 
+			| a < 30 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
+			| a < 40 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
+			| a < 50 = if r < 0.994962 .^ timeStep' then p else p {dead = 1}
+			| a < 60 = if r < 0.992414 .^ timeStep' then p else p {dead = 1}
+			| a < 70 = if r < 0.987259 .^ timeStep' then p else p {dead = 1}
+			| a < 80 = if r < 0.974004 .^ timeStep' then p else p {dead = 1}
+			| otherwise = p {dead = 1}
+			where a = age p; (.^) a b = (**) a b
 		timeStep' :: Float
 		timeStep' = fromIntegral timeStep
 

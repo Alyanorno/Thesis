@@ -62,9 +62,7 @@ toID id = ID $ fromIntegral id
 instance Storable ID where
 	sizeOf _ = sizeOf (undefined :: Int32)
 	alignment _ = sizeOf (undefined :: Int32)
-	{-# INLINE peek #-}
 	peek p = liftM ID (peekElemOff (castPtr p :: Ptr Int32) 0)
-	{-# INLINE poke #-}
 	poke p (ID id) = pokeElemOff (castPtr p :: Ptr Int32) 0 id
 
 --data Gender = Male | Female deriving (Show, Eq, Enum)
@@ -165,8 +163,10 @@ instance RandomGen Xorshift where
 (&!) :: People -> ID -> Person
 (&!) people i = V.unsafeIndex people $ fromID (i - (id $ V.head people))
 
-safeAccess :: People -> ID -> (Bool, Person)
-safeAccess people i = let ix = i - (id $ V.head people) in if i < id (V.head people) then (False, V.head people) else (True, people ! (fromID ix))
+safeAccess :: People -> ID -> Maybe Person
+safeAccess people i = if ix < id (V.head people) || ix > id (V.last people) then Nothing else Just (people ! (fromID ix))
+	where ix = i - (id $ V.head people)
+
 
 
 randomVector :: Int -> PureMT -> Vector Int64

@@ -68,7 +68,8 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 				size = V.length p
 
 		home :: People -> People -> People
-		home alivePeople p = V.imap (\i a -> if age a == 20 then (let (safe, a') = safeAccess p (fst $ parrents a) in if not safe then p ! i else getAHome mapRange center maps a (position a') (Xorshift $ random ! i)) else a) p
+		home alivePeople p = V.imap (\i a -> if age a == 20 then maybe (p ! i) (\a' -> getAHome mapRange center maps a (position a') (Xorshift $ random ! i)) (safeAccess p ((fromID.fst.parrents) a)) else a) p
+--		home alivePeople p = V.imap (\i a -> if age a == 20 then (let (safe, a') = safeAccess p (fst $ parrents a) in if not safe then p ! i else getAHome mapRange center maps a (position a') (Xorshift $ random ! i)) else a) p
 			where
 				random :: Vector Int64
 				random = randomVector (V.length p) (pureMT $ fromIntegral $ fromXorshift gen)
@@ -112,7 +113,6 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 					loopPartition i max p
 						| i < max = let (a,b) = V.unstablePartition ((==max).fst) p in V.map snd a : loopPartition (i+1) max b
 						| otherwise = []
-
 					f p = (((\(x,y) -> x + y * range).position) p, id p) -}
 
 
@@ -140,45 +140,76 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 
 
 createRelations :: Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
-createRelations gen friends people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
+createRelations gen friendss people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = V.length people
 	-- If fixed the result will not change depending on number of threads
 	let offset = 12 --numCapabilities
 	let randomGenerators = map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)
 	let genWithRanges = zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
 
-	fends <- VB.unsafeThaw friends
-	applyFriendMatches fends genWithRanges
-	fends' <- VB.unsafeFreeze fends
+	f <- VB.unsafeThaw friendss
+	applyFriendMatches f genWithRanges
+	f' <- VB.unsafeFreeze f
 
 	v <- V.unsafeThaw people
 	vRef <- newMVar v
-	applyLoveMatches vRef fends' genWithRanges
+	applyLoveMatches vRef f' genWithRanges
 	t <- takeMVar vRef
 	v' <- V.unsafeFreeze t
 
-	return (v', fends')
+	return (v', f')
 	where
 	applyFriendMatches :: MB.MVector RealWorld (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
-	applyFriendMatches friends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
+	applyFriendMatches fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
 		where
 		applyMatches :: Int -> Int -> PureMT -> IO ()
 		applyMatches i max gen
 			| i >= max = return ()
 			| (not.alive) person = applyMatches (i+1) max gen
 			| otherwise = do
-				friend <- MB.read friends i;
+				friend <- MB.read fends i;
 --				if V.length friend + V.length m < 200 then do
-				if V.length friend + V.length m < 100 + (((fromIntegral.fromXorshift.step.Xorshift .fromID.id) person) `rem` 200) then do
-					MB.write friends i (friend V.++ m);
+				if V.length friend + V.length m < maxFriends then do
+					MB.write fends i (friend V.++ m);
 				else do
-					MB.write friends i ((V.drop (V.length m) friend) V.++ m);
+					MB.write fends i ((V.drop (V.length m) friend) V.++ m );
 				applyMatches (i+1) max gen'
 			where
 			person = people ! i
 
+			maxFriends = 100 + (((fromIntegral.fromXorshift.step.Xorshift .fromID.id) person) `rem` 200)
+
 			m :: Vector ID
-			(m, gen') = match person gen
+			m = mp V.++ mf
+
+			-- Pick friends from friends friends
+			mf :: Vector ID
+--			mf = V.empty
+			mf
+				| V.null friends = V.empty
+				| otherwise = V.fromList $ filter ((maybe False alive).(safeAccess people)) $ zipWith pickRandomFriend random1 $ filter (not.V.null) $ map getFriendFriends $ take timeStep random2
+				where
+				pickRandomFriend :: Float -> Vector ID -> ID
+				pickRandomFriend r1 v = ((v !).floor.(*r1).fromIntegral.(+(-1)).V.length) v
+
+				getFriendFriends :: Int -> Vector ID;
+				getFriendFriends = (maybe V.empty ((friendss .!).fromID)).aliveID.(friends !)
+					where
+					aliveID :: ID -> Maybe ID
+					aliveID i = if ix < id (V.head people) || ix > id (V.last people) then Nothing else (if (not.alive) (people ! (fromID ix)) then Nothing else Just ix)
+						where ix = i - (id $ V.head people)
+
+				random1 :: [Float];
+				random1 = randomRs (0, 1) gen
+				random2 :: [Int];
+				random2 = randomRs (0, V.length friends-1) gen'
+
+				friends :: Vector ID
+				friends = (friendss .! i)
+
+			-- Pick friends from entire population
+			mp :: Vector ID
+			(mp, gen') = match person gen
 
 	applyLoveMatches :: MVar (M.MVector RealWorld Person) -> VB.Vector (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
 --	applyLoveMatches vRef fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
@@ -338,6 +369,4 @@ relationsBetween gen people sizeGroup getGroup groupBuckets sampleSize = VB.map 
 
 	statisticalSample :: Int -> Vector ID
 	statisticalSample i = V.map ((groupBuckets .! i) !) $ V.fromList $ take sampleSize (randomRs (0, VB.length groupBuckets - 1) gen :: [Int])
-
-
 
