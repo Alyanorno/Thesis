@@ -168,7 +168,6 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 			| (not.alive) person = applyMatches (i+1) max gen
 			| otherwise = do
 				friend <- MB.read fends i;
---				if V.length friend + V.length m < 200 then do
 				if V.length friend + V.length m < maxFriends then do
 					MB.write fends i (friend V.++ m);
 				else do
@@ -179,37 +178,9 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 
 			maxFriends = 100 + (((fromIntegral.fromXorshift.step.Xorshift .fromID.id) person) `rem` 200)
 
+			-- Pick friends
 			m :: Vector ID
-			m = mp V.++ mf
-
-			-- Pick friends from friends friends
-			mf :: Vector ID
---			mf = V.empty
-			mf
-				| V.null friends = V.empty
-				| otherwise = V.fromList $ filter ((maybe False alive).(safeAccess people)) $ zipWith pickRandomFriend random1 $ filter (not.V.null) $ map getFriendFriends $ take timeStep random2
-				where
-				pickRandomFriend :: Float -> Vector ID -> ID
-				pickRandomFriend r1 v = ((v !).floor.(*r1).fromIntegral.(+(-1)).V.length) v
-
-				getFriendFriends :: Int -> Vector ID;
-				getFriendFriends = (maybe V.empty ((friendss .!).fromID)).aliveID.(friends !)
-					where
-					aliveID :: ID -> Maybe ID
-					aliveID i = if ix < id (V.head people) || ix > id (V.last people) then Nothing else (if (not.alive) (people ! (fromID ix)) then Nothing else Just ix)
-						where ix = i - (id $ V.head people)
-
-				random1 :: [Float];
-				random1 = randomRs (0, 1) gen
-				random2 :: [Int];
-				random2 = randomRs (0, V.length friends-1) gen'
-
-				friends :: Vector ID
-				friends = (friendss .! i)
-
-			-- Pick friends from entire population
-			mp :: Vector ID
-			(mp, gen') = match person gen
+			(m, gen') = match i person gen
 
 	applyLoveMatches :: MVar (M.MVector RealWorld Person) -> VB.Vector (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
 --	applyLoveMatches vRef fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
@@ -239,7 +210,7 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 			friends = fends .! i
 
 			potentialLovers :: Vector ID
-			potentialLovers = V.filter (conditions.(people &!)) $ V.filter (\x -> x - start >= 0) friends
+			potentialLovers = V.filter (conditions.(people &!)) $ V.filter ((>=0).(+(-start))) friends
 
 			{-# INLINE conditions #-}
 			conditions x = (alive .&&. (((10<) .&&. (<50)).age) .&&. ((==0).lover) .&&. ((((/=) (parrents person)).parrents))) x
@@ -247,13 +218,13 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 			m = potentialLovers ! r
 			(r, gen') = randomR (0, V.length potentialLovers-1) gen
 
-
-	match :: Person -> PureMT -> (Vector ID, PureMT)
-	match person gen
+	{-# INLINE match #-}
+	match :: Int -> Person -> PureMT -> (Vector ID, PureMT)
+	match personIndex person gen
 		| V.null potentialMates = (V.empty, gen)
 		| otherwise = (\(r, g)-> (V.map (potentialMates !) $ scale r (V.length potentialMates-1), g)) $ randomVector_ (timeStep*4) gen'
 		where
-			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture
+			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture V.++ potentialFriendsFriend
 
 			(!random, gen') = randomVector_ (timeStep*2) gen
 
@@ -298,20 +269,26 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 
 			normalize v = V.map (/ (V.sum v)) v
 
---			randomInts :: Int -> Int -> PureMT -> VB.Vector Int
---			randomInts size max gen = VB.map (floor.(* (int2Float max)).double2Float) $ randomVector_ size gen
-
---			randomInts :: Int -> (Int, Int) -> Vector Int
---			randomInts max (size, from) = V.map (floor.(* (int2Float max)).double2Float) $ V.unsafeSlice from size random
-
---			random :: Vector Double
---			(random, gen') = randomVector_ nrRandomNumbers gen
-
 			prof :: Vector ID
 			prof = professionals .! (professionToInt $ profession person)
 
 			cult :: Vector ID
 			cult = culturals .! (cultureToInt $ culture person)
+
+			-- Pick friends from friends friends
+			potentialFriendsFriend :: Vector ID
+			potentialFriendsFriend
+				| V.null friends = V.empty
+				| otherwise = V.zipWith (\r friendID -> let ff = friendss .! (fromID $ friendID - start) in ff ! (floor $ (double2Float r) * (fromIntegral $ V.length ff-1))) r2 $ V.filter (>= start) $ V.map (friends !) $ scale r1 (V.length friends-1)
+				where
+				start = id $ V.head people
+
+				r1 = (V.slice 0 timeStep random)
+				r2 = (V.slice timeStep timeStep random)
+
+				friends :: Vector ID
+				friends = (friendss .! personIndex)
+
 
 
 getAJob :: People -> [Double] -> Person -> Vector Double -> Person
