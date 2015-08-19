@@ -312,7 +312,7 @@ getAHome range center maps person parrentPosition gen
 	where
 	theHome
 --		| null possibleHomes || parrentPosition == (0,0) = person
-		| parrentPosition == (0,0) = person
+		| parrentPosition == (0,0) = person {position = (mapRange `div` 2, mapRange `div` 2)}
 		| null possibleHomes = person {position = parrentPosition}
 		| otherwise = person {position = home}
 		where home = L.maximumBy (\a b -> compare (valueAt a) (valueAt b)) [possibleHomes !! i | i <- take 10 $ (randomRs (0, length possibleHomes-1) gen)]

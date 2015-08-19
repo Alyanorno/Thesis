@@ -164,8 +164,8 @@ instance RandomGen Xorshift where
 (&!) people i = V.unsafeIndex people $ fromID (i - (id $ V.head people))
 
 safeAccess :: People -> ID -> Maybe Person
-safeAccess people i = if ix < id (V.head people) || ix > id (V.last people) then Nothing else Just (people ! (fromID ix))
-	where ix = i - (id $ V.head people)
+safeAccess people i = if (ix < 0) || (ix > V.length people) then Nothing else Just (people ! ix)
+	where ix = fromID $ i - (id $ V.head people)
 
 
 
@@ -312,4 +312,32 @@ boxFilter :: Vector Float -> Vector Float
 boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-(fromIntegral mapRange)) + (f $ i+(fromIntegral mapRange)) / 5)) list
 	where
 		access a i = if i < 0 || i >= V.length list then a else list ! i
+
+
+death :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+death gen (people, friends, childrens) = (V.zipWith f people' r, friends', childrens')
+	where
+		friends' = if VB.length friends - V.length people' > 0 then VB.take (V.length people') friends else friends
+		childrens' = if VB.length childrens - V.length people' > 0 then VB.take (V.length people') childrens else childrens
+
+		r = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
+			where f g = let (v,g') = R.randomDouble g in v : f g'
+
+		(_,people') = V.break ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
+		f :: Person -> Float -> Person
+		f p r
+			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 
+			| a < 30 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
+			| a < 40 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
+			| a < 50 = if r < 0.994962 .^ timeStep' then p else p {dead = 1}
+			| a < 60 = if r < 0.992414 .^ timeStep' then p else p {dead = 1}
+			| a < 70 = if r < 0.987259 .^ timeStep' then p else p {dead = 1}
+			| a < 80 = if r < 0.974004 .^ timeStep' then p else p {dead = 1}
+			| otherwise = p {dead = 1}
+			where a = age p; (.^) a b = (**) a b
+		timeStep' :: Float
+		timeStep' = fromIntegral timeStep
+
+seed :: StdGen
+seed = mkStdGen 0
 

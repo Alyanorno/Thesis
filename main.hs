@@ -55,7 +55,7 @@ main = do
 			putStrLn "Enter number of iterations: "
 			n <- getLine
 			let p = start peopleFromStart
-			let (g,_,_) = generations seed 0 (read n) (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
+			let (g, friendss,_) = generations seed 0 (read n) (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
 			let g' = V.filter alive g
 			let g'' = V.filter (not.alive) g
 			let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g')
@@ -72,6 +72,13 @@ main = do
 			putStrLn ""
 			putStr "Prof:  "
 			VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.V.length) $ toBuckets allProfessionsVector (professionToInt.profession) g'
+			putStrLn ""
+
+			let fromIDtoGraph = VB.map ((V.filter (>=0)).(V.map (fromID.(+(-(id $ V.head g))))))
+			let distanceGraph = calculateDistanceGraph $ fromIDtoGraph friendss
+			let numberOf value = VB.sum $ VB.map (V.length.(V.filter (==value))) distanceGraph
+			when (any (=="path") args) (putStrLn $ "Path: " ++ (show [numberOf v | v <- [0..10]]))
+
 			putStrLn ""
 
 	putStrLn "---------------------"
@@ -154,9 +161,14 @@ genProfessionMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name)
 	$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
 
 
-
-
-
+calculateDistanceGraph :: VB.Vector (Vector Int) -> VB.Vector (Vector Int)
+calculateDistanceGraph graph = VB.generate (VB.length graph) (\i -> V.generate (V.length (graph .! i)) (\l -> pathLength 0 l i))
+	where
+	pathLength :: Int -> Int -> Int -> Int
+	pathLength depth goal current
+		| depth == 3 || found = depth
+		| otherwise = V.minimum $ V.map (pathLength (depth+1) goal) (graph .! current)
+		where found = V.elem goal (graph .! current)
 
 generations :: StdGen -> Int -> Int -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 generations seed i n previous
@@ -165,42 +177,4 @@ generations seed i n previous
 	where 
 		next = generations seed (i+1) n $ ((change gen).(birth gen).(death gen)) previous
 		gen = Xorshift $ (randomRs (minBound :: Int64, maxBound :: Int64) seed :: [Int64]) !! i
-
-
-death :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-death gen (people, friends, childrens) = (V.zipWith f people' r, friends', childrens')
-	where
-		friends' = if VB.length friends - V.length people' > 0 then VB.take (V.length people') friends else friends
-		childrens' = if VB.length childrens - V.length people' > 0 then VB.take (V.length people') childrens else childrens
-
-		r = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
-			where f g = let (v,g') = R.randomDouble g in v : f g'
-
-		(_,people') = V.break ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
-		f :: Person -> Float -> Person
-		f p r
-{-			| a < 20 = if r < 0.97 then p else p {dead = 1} 
-			| a < 30 = if r < 0.99 then p else p {dead = 1}
-			| a < 40 = if r < 0.99 then p else p {dead = 1}
-			| a < 50 = if r < 0.98 then p else p {dead = 1}
-			| a < 60 = if r < 0.97 then p else p {dead = 1}
-			| a < 70 = if r < 0.95 then p else p {dead = 1}
-			| a < 80 = if r < 0.90 then p else p {dead = 1}
-			| otherwise = p {dead = 1}
-			where a = age p-}
-			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 
-			| a < 30 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
-			| a < 40 = if r < 0.997491 .^ timeStep' then p else p {dead = 1}
-			| a < 50 = if r < 0.994962 .^ timeStep' then p else p {dead = 1}
-			| a < 60 = if r < 0.992414 .^ timeStep' then p else p {dead = 1}
-			| a < 70 = if r < 0.987259 .^ timeStep' then p else p {dead = 1}
-			| a < 80 = if r < 0.974004 .^ timeStep' then p else p {dead = 1}
-			| otherwise = p {dead = 1}
-			where a = age p; (.^) a b = (**) a b
-		timeStep' :: Float
-		timeStep' = fromIntegral timeStep
-
-seed :: StdGen
-seed = mkStdGen 0
-
 
