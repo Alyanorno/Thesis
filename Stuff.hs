@@ -43,6 +43,12 @@ allCultures = [brahmatic, endorphi, uppbrah]
 allCulturesVector = VB.fromList ([0,1,2] :: [Int])
 cultureToInt :: Culture -> Int
 cultureToInt (Culture c) = fromIntegral c
+stringToCulture :: String -> Culture
+stringToCulture a = case a of
+	"brahmatic" -> brahmatic
+	"endorphi" -> endorphi
+	"uppbrah" -> uppbrah
+	_ -> error "Incorrect culture name"
 
 --data Profession = Farmer | Administrator | Beggar | None deriving (Show, Eq, Enum, Bounded)
 --type Professions = [Profession]
@@ -52,6 +58,13 @@ allProfessions = [farmer, administrator, beggar, none]
 allProfessionsVector = VB.fromList ([0,1,2,3] :: [Int])
 professionToInt :: Profession -> Int
 professionToInt (Profession p) = fromIntegral p
+stringToProfession :: String -> Profession
+stringToProfession a = case a of
+	"farmer" -> farmer
+	"administrator" -> administrator
+	"beggar" -> beggar
+	"none" -> none
+	_ -> error "Incorrect profession name"
 
 newtype ID = ID Int32 deriving (Show, Eq, Ord, Num)
 {-# INLINE fromID #-}
@@ -317,13 +330,13 @@ boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) 
 death :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 death gen (people, friends, childrens) = (V.zipWith f people' r, friends', childrens')
 	where
-		friends' = if VB.length friends - V.length people' > 0 then VB.take (V.length people') friends else friends
-		childrens' = if VB.length childrens - V.length people' > 0 then VB.take (V.length people') childrens else childrens
+		friends' = VB.take (V.length people') friends
+		childrens' = VB.take (V.length people') childrens
 
 		r = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		(_,people') = V.break ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
+		people' = V.filter ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
 		f :: Person -> Float -> Person
 		f p r
 			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 

@@ -69,7 +69,6 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 
 		home :: People -> People -> People
 		home alivePeople p = V.imap (\i a -> if age a == 20 then maybe (p ! i) (\a' -> getAHome mapRange center maps a (position a') (Xorshift $ random ! i)) (safeAccess p ((fromID.fst.parrents) a)) else a) p
---		home alivePeople p = V.imap (\i a -> if age a == 20 then (let (safe, a') = safeAccess p (fst $ parrents a) in if not safe then p ! i else getAHome mapRange center maps a (position a') (Xorshift $ random ! i)) else a) p
 			where
 				random :: Vector Int64
 				random = randomVector (V.length p) (pureMT $ fromIntegral $ fromXorshift gen)
@@ -107,13 +106,13 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 				peopleMap :: VB.Vector (Vector ID)
 				peopleMap = VB.unsafeAccumulate V.snoc (VB.replicate (V.length positionMap) V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert alivePeople
 					where f p = ((fromIntegral.(\(x,y) -> x + y * range).position) p, id p)
-{-				peopleMap = VB.fromList $ loopPartition 0 (V.length positionMap) $ V.map f $ V.filter ((/=(0,0)).position) alivePeople
-					where
-					loopPartition :: Int -> Int -> Vector (Int, ID) -> [(Vector ID)]
-					loopPartition i max p
-						| i < max = let (a,b) = V.unstablePartition ((==max).fst) p in V.map snd a : loopPartition (i+1) max b
-						| otherwise = []
-					f p = (((\(x,y) -> x + y * range).position) p, id p) -}
+--				peopleMap = VB.fromList $ loopPartition 0 (V.length positionMap) $ V.map f $ V.filter ((/=(0,0)).position) alivePeople
+--					where
+--					loopPartition :: Int -> Int -> Vector (Int, ID) -> [(Vector ID)]
+--					loopPartition i max p
+--						| i < max = let (a,b) = V.unstablePartition ((==max).fst) p in V.map snd a : loopPartition (i+1) max b
+--						| otherwise = []
+--					f p = (((\(x,y) -> x + y * range).position) p, id p)
 
 
 				positionMap :: Vector (Int32, Int32)
@@ -142,7 +141,7 @@ change gen (people, friends, childrens) = let (p, f) = ((relations alivePeople f
 createRelations :: Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
 createRelations gen friendss people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = V.length people
-	-- If fixed the result will not change depending on number of threads
+--	If fixed the result will not change depending on number of threads
 	let offset = 12 --numCapabilities
 	let randomGenerators = map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)
 	let genWithRanges = zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
@@ -160,7 +159,8 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 	return (v', f')
 	where
 	applyFriendMatches :: MB.MVector RealWorld (Vector ID) -> [(PureMT, (Int, Int))] -> IO [()]
-	applyFriendMatches fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
+--	applyFriendMatches fends list = P.mapM (\(gen, (from, to)) -> applyMatches from to gen) list
+	applyFriendMatches fends list = mapM (\(gen, (from, to)) -> applyMatches from to gen) list
 		where
 		applyMatches :: Int -> Int -> PureMT -> IO ()
 		applyMatches i max gen

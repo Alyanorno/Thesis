@@ -12,3 +12,7 @@
 *.log
 *.ps
 *.svg
+*.csv
+*.html
+*.ods
+*.xlsx

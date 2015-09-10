@@ -25,37 +25,31 @@ import Change
 
 
 birth :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, c)
+birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty) --c VB.++ VB.replicate (V.length add) V.empty)
 	where
 		add = V.fromList $ concat babies
-		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
+{-		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
 			where
-				f :: [Person] -> [(Int, [ID])]
-				f person = [(fromID $ p1-offset, b), (fromID $ p2-offset, b)]
-					where 
-						(p1, p2) = (parrents.head) person
-						offset = id $ V.head people
-						b = map id person
+			f :: [Person] -> [(Int, [ID])]
+			f person = [(fromID $ p1-offset, b), (fromID $ p2-offset, b)]
+				where 
+				(p1, p2) = (parrents.head) person
+				offset = id $ V.head people
+				b = map id person -}
 
 		babies :: [[Person]]
 		babies = filter (not.null) $ zipWith f babyMakers $ splitPlaces numberOfBabies ids
 			where
-				f :: Person -> [Int] -> [Person]
-				f mother ids'
-					| null ids' = []
-					| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids'
+			f :: Person -> [Int] -> [Person]
+			f mother ids'
+				| null ids' = []
+				| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids'
 
 		babyMakers :: [Person]
---		babyMakers = VB.toList $ VB.filter (\a -> f (safeAccess p (lover a)) a) people
 		babyMakers = V.toList $ V.filter conditions people
 			where 
-				f :: (Bool, Person) -> Person -> Bool
-				f (safe, l) a
-					| not safe || not (alive l) = False
-					| otherwise = conditions a
-
-				conditions :: Person -> Bool
-				conditions a = (((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive) a
+			conditions :: Person -> Bool
+			conditions a = (((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive) a
 
 		numberOfBabies :: [Int]
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
