@@ -3,6 +3,11 @@
 import Prelude hiding (id)
 import GHC.Float
 
+import Diagrams.Prelude hiding (start, position)
+import Diagrams.Backend.SVG
+import Diagrams.TwoD.Layout.Grid
+import Diagrams.TwoD.Size
+
 import Criterion.Main
 
 import Data.Vector.Storable (toList, Vector, snoc)
@@ -16,6 +21,8 @@ import qualified Data.Array.Unboxed as A
 import Data.List.Split (chunksOf)
 import qualified Data.List as L
 
+import qualified Data.Foldable as F
+import Data.Char (toUpper)
 import Data.Int (Int32, Int64)
 import Data.Ord
 import Data.String (words)
@@ -53,7 +60,7 @@ main = do
 		putStrLn "Enter number of iterations (from and to): "
 		n1 <- getLine
 		n2 <- getLine
-		when doPop $ genPopulationMap n1 n2
+		when doPop $ genPopulationMap2 n1 n2
 		when doCult $ genCultureMap n1 n2
 		when doProf $ genProfessionMap n1 n2
 	else if any (=="perf") args then do
@@ -62,6 +69,45 @@ main = do
 		let options = ["--csv", "mainPerf.csv"]
 --		let options = ["--output", "mainPerf.html"]
 		withArgs options $ defaultMain [bench a $ nf createGeneration (read a) | a <- words n]
+	else if any (=="connections") args then do
+		putStrLn "Enter number of iterations: "
+		n <- getLine
+		putStrLn ""
+		let (g, friendss,_) = createGeneration (read n)
+		let (map', mapLengths') = createMaps g
+
+		let index = fromJust $ L.findIndex (=="connections") args
+		let comp = case args !! (index + 1) of
+			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
+			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
+			_ -> error "Second argument for connections must be either \"culty\" or \"profy\""
+
+		let name = "connections" ++ (let a = args !! (index + 2) in (toUpper $ head a) : (tail a)) ++ ".png"
+		let r1 = selectRelations g (not.comp) friendss (V.head g)
+		let r2 = selectRelations g comp friendss (V.head g)
+
+		putStrLn "Starting connections rendering"
+		renderDiagram name (mapRelations map' r1 r2)
+		putStrLn "Completed connections rendering"
+	else if any (=="map") args then do
+		putStrLn "Enter number of iterations: "
+		n <- getLine
+		putStrLn ""
+
+		let index = fromJust $ L.findIndex (=="map") args
+		let comp = case args !! (index + 1) of
+			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
+			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
+			_ -> error "Second argument for map must be either \"culty\" or \"profy\""
+
+		let (g,_,_) = createGeneration (read n)
+		let g' = V.filter alive g
+		let name = "map" ++ (let a = args !! (index + 2) in (toUpper $ head a) : (tail a)) ++ ".svg"
+		let range = fromIntegral $ mapRange
+
+		putStrLn "Starting map rendering"
+		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) $ V.filter comp g'
+		putStrLn "Completed map rendering"
 	else do
 		putStrLn "Enter number of iterations: "
 		n <- getLine
@@ -71,23 +117,23 @@ main = do
 		let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g')
 		let toProcent2 x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g)
 		putStrLn ""
-		putStrLn $ "Child: " ++ (show $ VB.foldr (+) 0 $ VB.map V.length childrens)
-		putStrLn $ "Total: " ++ (show $ V.length g)
-		putStrLn $ "Alive: " ++ (show $ toProcent2 $ V.length g') ++ "% "
-		putStrLn $ "Lover: " ++ (show $ toProcent $ V.length $ V.filter (((/=0).lover) .&&. ((<41).age)) g') ++ "%"
+		putStrLn $ "Child: " ++ (show . VB.foldr (+) 0 . VB.map V.length $ childrens)
+		putStrLn $ "Total: " ++ (show . V.length $ g)
+		putStrLn $ "Alive: " ++ (show . toProcent2 . V.length $ g') ++ "% "
+		putStrLn $ "Lover: " ++ (show . toProcent . V.length . V.filter ((/=0) . lover .&&. (<41) . age) $ g') ++ "%"
 --		print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --		print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g'' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
 --		print $ (VB.length $ VB.filter ((==female).gender) g', VB.length $ VB.filter ((==male).gender) g')
 		putStr "Cult:  "
-		VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.V.length) $ toBuckets allCulturesVector (cultureToInt.culture) g'
+		VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allCulturesVector (cultureToInt . culture) g'
 		putStrLn ""
 		putStr "Prof:  "
-		VB.mapM_ putStr $ VB.map ((++"% ").show.toProcent.V.length) $ toBuckets allProfessionsVector (professionToInt.profession) g'
+		VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allProfessionsVector (professionToInt . profession) g'
 		putStrLn ""
 
-		let fromIDtoGraph = VB.map ((V.filter (>=0)).(V.map (fromID.(+(-(id $ V.head g))))))
+		let fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id $ V.head g)))))
 		let distanceGraph = calculateDistanceGraph $ fromIDtoGraph friendss
-		let numberOf value = VB.sum $ VB.map (V.length.(V.filter (==value))) distanceGraph
+		let numberOf value = VB.sum $ VB.map (V.length . V.filter (==value)) distanceGraph
 		when (any (=="path") args) (putStrLn $ "Path: " ++ (show [numberOf v | v <- [0..10]]))
 
 		putStrLn ""
@@ -101,6 +147,81 @@ main = do
 
 
 
+renderDiagram name a = renderSVG name dimensions a
+	where dimensions = mkSizeSpec2D (Just 1000) (Just 1000)
+
+mapRelations :: [[Int]] -> VB.Vector [Int] -> VB.Vector [Int] -> Diagram B
+mapRelations p r sr = baseLines <> redLines <> circles
+	where
+	baseLines = drawAllNodes node p # applyAll (createArrows p r standardArrow) # opacityGroup 0.4
+	redLines = drawAllNodes node p # applyAll (createArrows p sr redArrow) # opacityGroup 0.7
+	circles = drawAllNodes node p
+
+	drawAllNodes nodeType p = foldr1 (<>) $ zipWith (nodesInCircle nodeType) p list
+		where
+		list = [r2 (x,y) | x <- [0, spacing..(range-1)*spacing], y <- [0, spacing..(range-1)*spacing]]
+
+		nodesInCircle nodeType p offset
+			| length p < 3 = strutX 1 # translate offset
+			| otherwise = atPoints (trailVertices $ regPoly (length p) 1 # translate offset) (map nodeType p)
+
+
+	createArrows p r o = [connectOutside' o from to | temp <- p, from <- temp, to <- r .! from]
+
+	standardArrow = with
+		& gaps .~ superTiny
+		& arrowHead .~ noHead
+		& shaftStyle %~ lc black . opacity 0.01 . lw ultraThin
+	redArrow = with
+		& gaps .~ superTiny
+		& arrowHead .~ noHead
+		& shaftStyle %~ lc red . opacity 0.01 . lw ultraThin
+
+	superTiny = normalized 0.002
+
+	spacing = 15
+	range = fromIntegral $ mapRange
+
+	node :: Int -> Diagram B
+	node n = circle 0.2 # fc black # lwG 0 # named n
+
+selectRelations g comp friendss start = VB.imap (\i a -> if (comp.(g !)) i then a else filter (comp.(g !)) a) $ createRelations start friendss
+
+createMaps g = (VB.toList $ VB.map V.toList $ peopleMap (r*r) g, VB.toList $ VB.map V.length $ peopleMap (r*r) g)
+	where r :: Int; r = fromIntegral $ mapRange
+createRelations start f = VB.map V.toList $ fromIDtoGraph f
+	where fromIDtoGraph = VB.map ((V.filter (>=0)).(V.map (fromID.(+(-(id start))))))
+
+peopleMap :: Int -> People -> VB.Vector (Vector Int)
+peopleMap size people = VB.unsafeAccumulate V.snoc (VB.replicate size V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert people
+	where f p = ((fromIntegral.(\(x,y) -> x + y * mapRange).position) p, fromID $ (id p) - (id $ V.head people))
+
+
+genPopulationMap2 :: String -> String -> IO ()
+genPopulationMap2 n1 n2 = mapM_ (\index -> do
+		let (g,_,_) = createGeneration index
+		let name = "data/populationMap" ++ (show index) ++ ".svg"
+		let range = fromIntegral $ mapRange
+
+		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) g
+		) [read n1..read n2]
+
+populationMapToDiagram :: VB.Vector Int -> Diagram B
+populationMapToDiagram population = (populationSquares # center) ||| example
+	where
+	populationSquares :: Diagram B
+	populationSquares = gridCat $ map (sq . fromIntegral) $ VB.toList population
+
+	example :: Diagram B
+	example = vsep biggestPopulation $ [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation / 2), hsep biggestPopulation [sq 1, f "1"]]
+		where f s = scale biggestPopulation $ text s <> rect (fromIntegral $ length s) 1 # lw n
+
+	sq s = square s # fc black # lwG 0
+--	sq s = roundedRect s s (s / 4) # fc black # lwG 0
+
+	n = Diagrams.Prelude.none
+
+	biggestPopulation = fromIntegral $ F.maximum population :: Double
 
 
 genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do

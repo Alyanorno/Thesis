@@ -34,8 +34,10 @@ import Control.Exception.Base (assert)
 
 {-# INLINE (.&&.) #-}
 (.&&.) f g !a = (f a) && (g a)
+infixr 4 .&&.
 {-# INLINE (.||.) #-}
 (.||.) f g !a = (f a) || (g a)
+infixr 4 .||.
 
 newtype Culture = Culture {fromCulture :: Word8} deriving (Show, Eq)
 (brahmatic:endorphi:uppbrah:_) = map Culture [0..]
