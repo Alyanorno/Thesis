@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns, FlexibleContexts, TypeFamilies #-}
 
 import Prelude hiding (id)
 import GHC.Float
@@ -206,22 +206,24 @@ genPopulationMap2 n1 n2 = mapM_ (\index -> do
 		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) g
 		) [read n1..read n2]
 
+biggestPopulation = 100 :: Double
+
 populationMapToDiagram :: VB.Vector Int -> Diagram B
-populationMapToDiagram population = (populationSquares # center) ||| example
+populationMapToDiagram population = hsep biggestPopulation [((populationSquares # center) `atop` square (biggestPopulation * (fromIntegral mapRange))), example]
 	where
 	populationSquares :: Diagram B
-	populationSquares = gridCat $ map (sq . fromIntegral) $ VB.toList population
+	populationSquares = gridCat $ sameBoundingSquare (sq biggestPopulation) $ map (sq . (\x -> if x > biggestPopulation then biggestPopulation else x) . fromIntegral) $ VB.toList population
 
 	example :: Diagram B
-	example = vsep biggestPopulation $ [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation / 2), hsep biggestPopulation [sq 1, f "1"]]
-		where f s = scale biggestPopulation $ text s <> rect (fromIntegral $ length s) 1 # lw n
+	example = vsep biggestPopulation $ [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation * (3/4)), sq (biggestPopulation / 2), sq (biggestPopulation / 4), hsep biggestPopulation [sq 1, f "1"]]
+		where f s = scale biggestPopulation $ text s <> rect 3 1 # lw n
 
-	sq s = square s # fc black # lwG 0
+	sq s = square s # fc red # lwG 0
 --	sq s = roundedRect s s (s / 4) # fc black # lwG 0
 
 	n = Diagrams.Prelude.none
 
-	biggestPopulation = fromIntegral $ F.maximum population :: Double
+--	biggestPopulation = fromIntegral $ F.maximum population :: Double
 
 
 genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
