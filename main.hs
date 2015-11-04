@@ -212,7 +212,7 @@ populationMapToDiagram :: VB.Vector Int -> Diagram B
 populationMapToDiagram population = hsep biggestPopulation [((populationSquares # center) `atop` square (biggestPopulation * (fromIntegral mapRange))), example]
 	where
 	populationSquares :: Diagram B
-	populationSquares = gridCat $ sameBoundingSquare (sq biggestPopulation) $ map (sq . (\x -> if x > biggestPopulation then biggestPopulation else x) . fromIntegral) $ VB.toList population
+	populationSquares = gridCat $ map ((((sq biggestPopulation :: D V2 Double) # phantom) `atop`) . sq . (\x -> if x > biggestPopulation then biggestPopulation else x) . fromIntegral) $ VB.toList population
 
 	example :: Diagram B
 	example = vsep biggestPopulation $ [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation * (3/4)), sq (biggestPopulation / 2), sq (biggestPopulation / 4), hsep biggestPopulation [sq 1, f "1"]]
