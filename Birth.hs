@@ -5,27 +5,19 @@ module Birth (birth) where
 
 import Prelude hiding (id)
 
-import Data.Int (Int32)
-
-import Data.Vector.Storable (toList, Vector, snoc)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Storable as V
-import qualified Data.Vector.Mutable as MB
-import qualified Data.Vector.Storable.Mutable as M
-
-import qualified Data.Array.Unboxed as A
 
 import Data.List.Split (splitPlaces)
 
 import System.Random
 
 import Stuff
-import Change
 
 
 
 birth :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty) --c VB.++ VB.replicate (V.length add) V.empty)
+birth gen (people, friends, _) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty) --c VB.++ VB.replicate (V.length add) V.empty)
 	where
 		add = V.fromList $ concat babies
 {-		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
@@ -43,7 +35,7 @@ birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.repl
 			f :: Person -> [Int] -> [Person]
 			f mother ids'
 				| null ids' = []
-				| otherwise = map (\id' -> makeBaby id' (id mother, lover mother) (culture mother)) ids'
+				| otherwise = map (\id' -> makeBaby id' (getId mother, lover mother) (culture mother)) ids'
 
 		babyMakers :: [Person]
 		babyMakers = V.toList $ V.filter conditions people
@@ -55,7 +47,7 @@ birth gen (people, friends, childrens) = (people V.++ add, friends VB.++ VB.repl
 		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
 
 		ids = [start..start + foldr1 (+) numberOfBabies]
-		start = fromID $ ((+1).id.V.last) people
+		start = fromID $ ((+1).getId.V.last) people
 
 
 makeBaby :: Int -> (ID, ID) -> Culture -> Person
