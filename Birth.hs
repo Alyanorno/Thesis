@@ -12,22 +12,14 @@ import Data.List.Split (splitPlaces)
 
 import System.Random
 
+import Definitions
 import Stuff
 
 
-
 birth :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-birth gen (people, friends, _) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty) --c VB.++ VB.replicate (V.length add) V.empty)
+birth gen (people, friends, _) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty)
 	where
 		add = V.fromList $ concat babies
-{-		c = VB.accum (\a b -> a V.++ (V.fromList $ b)) childrens $ concat $ map f babies
-			where
-			f :: [Person] -> [(Int, [ID])]
-			f person = [(fromID $ p1-offset, b), (fromID $ p2-offset, b)]
-				where 
-				(p1, p2) = (parrents.head) person
-				offset = id $ V.head people
-				b = map id person -}
 
 		babies :: [[Person]]
 		babies = filter (not.null) $ zipWith f babyMakers $ splitPlaces numberOfBabies ids
@@ -49,8 +41,6 @@ birth gen (people, friends, _) = (people V.++ add, friends VB.++ VB.replicate (V
 		ids = [start..start + foldr1 (+) numberOfBabies]
 		start = fromID $ ((+1).getId.V.last) people
 
-
 makeBaby :: Int -> (ID, ID) -> Culture -> Person
 makeBaby id' parrents' culture' = Person 0 (if mod id' 2 == 0 then male else female) none culture' 0 (toID id') 0 parrents' (0,0)
-
 
