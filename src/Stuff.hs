@@ -1,5 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
+
 
 module Stuff where
 
@@ -11,12 +13,12 @@ import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as M
 
 import Data.Int
-import Data.Word
 import System.Random
 import System.Random.Mersenne.Pure64 as R
 import Control.Monad.ST
 
 import Definitions
+
 
 
 {-# INLINE (.&&.) #-}
@@ -25,7 +27,6 @@ infixr 4 .&&.
 {-# INLINE (.||.) #-}
 (.||.) f g !a = (f a) || (g a)
 infixr 4 .||.
-
 
 {-# INLINE (!) #-}
 (!) v i = V.unsafeIndex v $ fromIntegral i
@@ -36,21 +37,16 @@ infixr 4 .||.
 
 {-# INLINE (&!) #-}
 (&!) :: People -> ID -> Person
-(&!) people i = V.unsafeIndex people $ fromID (i - (getId $ V.head people))
+(&!) people i = V.unsafeIndex people $ fromID (i - (id $ V.head people))
 
 safeAccess :: People -> ID -> Maybe Person
 safeAccess people i = if (ix < 0) || (ix > V.length people) then Nothing else Just (people ! ix)
-	where ix = fromID $ i - (getId $ V.head people)
+	where ix = fromID $ i - (id $ V.head people)
 
-
-toBuckets :: VB.Vector Int -> (Person -> Int) -> People -> VB.Vector (Vector ID)
-toBuckets buckets test list = VB.map (f list) buckets -- `using` (parVector 1) --VB.map (f list) buckets
-	where f ls i = V.map getId $ V.filter ((==i).test) ls
---toBuckets size f people = VB.accumulate V.snoc (VB.replicate size V.empty) $ VB.map f people
 
 
 randomVector :: Int -> PureMT -> Vector Int64
-randomVector n gen = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 gen; return v }
+randomVector n g = if n <= 0 then V.empty else V.create $ do { v <- M.new n; fill v 0 g; return v }
 	where
 		fill v i g
 			| i < n = do
@@ -58,38 +54,37 @@ randomVector n gen = if n <= 0 then V.empty else V.create $ do { v <- M.new n; f
 				M.write v i x
 				fill v (i+1) g'
 			| otherwise = return ()
-
-word64toFloat :: Word64 -> Float
-word64toFloat = fromIntegral
-
-randomVector_ :: Int -> PureMT -> (Vector Float, PureMT)
-randomVector_ n gen = if n <= 0 then (V.empty, gen) else runST $ do { v <- M.new n; gen' <- fill v 0 gen; v' <- V.unsafeFreeze v; return (v', gen')}
+randomVector_ :: Int -> PureMT -> (Vector Double, PureMT)
+randomVector_ n g = if n <= 0 then (V.empty, g) else runST $ do { v <- M.new n; g' <- fill v 0 g; v' <- V.unsafeFreeze v; return (v', g')}
 	where
 		fill v i g
 			| i < n = do
-				(x, g') <- return $ R.randomWord64 g
-				M.write v i $ fromIntegral x
+				(x, g') <- return $ R.randomDouble g
+				M.write v i x
 				fill v (i+1) g'
 			| otherwise = return g
 
 
+--rescale :: Int -> Int -> Int -> Int
 rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY :: Float) / (fromIntegral maxX :: Float))
+
+--rescale_ :: Int -> Float -> Int -> Float
 rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 
-startPopulation :: Int -> People
-startPopulation a = let off = a * 3; ti = [off+1..off+1+a*2] in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age_ (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip ti $ zip (take (length ti) $ cycle [male, female]) $ zip (infinitly allProfessions (length ti)) (infinitly allCultures (length ti)), let age_ = fromIntegral $ f (i-off) a]
+start :: Int -> People
+start a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
 	where
 		f :: Int -> Int -> Int
-		f i top
-			| i >= floor ((fromIntegral top :: Float) * 0.75) = 0
-			| i >= floor ((fromIntegral top :: Float) * 0.30) = 20
-			| i >= floor ((fromIntegral top :: Float) * 0.10) = 40
+		f i max
+			| i >= floor ((fromIntegral max :: Float) * 0.75) = 0
+			| i >= floor ((fromIntegral max :: Float) * 0.30) = 20
+			| i >= floor ((fromIntegral max :: Float) * 0.10) = 40
 			| otherwise = 60
-		infinitly x size = take size $ cycle $ concat $ zipWith (\a1 a2 -> a1 : a2 : []) x x
+		infinitly x = cycle $ concat $ zipWith (\a b -> a : b : []) x x
 
 distanceTo :: (Float,Float) -> (Float,Float) -> Float
-distanceTo (x,y) (x',y') = (x-x')^(2 :: Int) + (y-y')^(2 :: Int)
+distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
 
 toFloat :: (Integral i) => (i,i) -> (Float,Float)
 toFloat (x,y) = (fromIntegral x, fromIntegral y)
@@ -101,12 +96,13 @@ mapRange :: Int32
 mapRange = 50
 
 timeStep :: Int
-timeStep = 4 -- If 1 they will never reproduce :P (birth divides by two and rounds down)
+timeStep = 4 -- If 1 they will never reproduce :P (birth rounds down)
 
 peopleFromStart :: Int
 peopleFromStart = 50
 
 scaleDistanceFromCenter :: Float -> Float
+--scaleDistanceFromCenter = (*) (0-0.1) --0.001
 scaleDistanceFromCenter a = 100 - a * 1
 
 scaleDistanceFromCulturalCenter :: Float -> Float
@@ -119,7 +115,7 @@ scaleCulturalMap :: Float -> Float
 scaleCulturalMap = (*1)
 
 staticTerrainMap :: Vector Float
-staticTerrainMap = let fixedRange = 50 :: Int in V.fromList $ [base ! ((rescale mapRange fixedRange x) + (rescale mapRange fixedRange y) * fixedRange) | x <- [0..mapRange-1], y <- [0..mapRange-1]]
+staticTerrainMap = V.fromList $ [base ! ((rescale mapRange 50 x) + (rescale mapRange 50 y) * 50) | x <- [0..mapRange-1], y <- [0..mapRange-1]]
 	where base = V.fromList $ map (\x -> if x == 1 then -10000 else x) $ map (\x -> if x == 2 then infinity else x) $ concat --(V.fromList $ take (mapRange*mapRange) $ repeat 0.0) V.// mountain
 		[
 		[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],

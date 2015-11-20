@@ -1,5 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
+
 
 module Definitions where
 
@@ -15,6 +17,7 @@ import Data.Word
 import Data.Bits
 import System.Random
 import Control.Monad (liftM)
+
 
 
 newtype Culture = Culture {fromCulture :: Word8} deriving (Show, Eq)
@@ -71,7 +74,7 @@ data Person = Person {
 	culture :: {-# UNPACK #-} !Culture,
 	age :: {-# UNPACK #-} !Int32,
 	-- Unique number used to identifiy person, people are always stored in order
-	getId :: {-# UNPACK #-} !ID,
+	id :: {-# UNPACK #-} !ID,
 	-- A zero means no lover
 	lover :: {-# UNPACK #-} !ID,
 	parrents :: {-# UNPACK #-} !(ID, ID),
@@ -87,33 +90,33 @@ instance Storable Person where
 	{-# INLINE peek #-}
 	peek p = do
 		let q2 = castPtr p :: Ptr Word8
-		dead_ <- peekElemOff q2 0
-		gender_ <- peekElemOff q2 1
-		profession_ <- peekElemOff q2 2
-		culture_ <- peekElemOff q2 3
+		dead <- peekElemOff q2 0
+		gender <- peekElemOff q2 1
+		profession <- peekElemOff q2 2
+		culture <- peekElemOff q2 3
 
 		let q = castPtr p :: Ptr Int32
-		age_ <- peekElemOff q 1
-		id_ <- peekElemOff q 2
-		lover_ <- peekElemOff q 3
+		age <- peekElemOff q 1
+		id <- peekElemOff q 2
+		lover <- peekElemOff q 3
 		parrents1 <- peekElemOff q 4
 		parrents2 <- peekElemOff q 5
 		position1 <- peekElemOff q 6
 		position2 <- peekElemOff q 7
-		return (Person dead_ (Gender gender_) (Profession profession_) (Culture culture_) (fromIntegral age_) (fromIntegral id_) (fromIntegral lover_) (fromIntegral parrents1, fromIntegral parrents2) (fromIntegral position1, fromIntegral position2))
+		return (Person dead (Gender gender) (Profession profession) (Culture culture) (fromIntegral age) (fromIntegral id) (fromIntegral lover) (fromIntegral parrents1, fromIntegral parrents2) (fromIntegral position1, fromIntegral position2))
 
 	{-# INLINE poke #-}
-	poke p (Person dead_ gender_ profession_ culture_ age_ id_ lover_ (parrents1, parrents2) (position1, position2)) = do
+	poke p (Person dead gender profession culture age id lover (parrents1, parrents2) (position1, position2)) = do
 		let q2 = castPtr p :: Ptr Word8
-		pokeElemOff q2 0 dead_
-		pokeElemOff q2 1 $ fromGender gender_
-		pokeElemOff q2 2 $ fromProfession profession_
-		pokeElemOff q2 3 $ fromCulture culture_
+		pokeElemOff q2 0 dead
+		pokeElemOff q2 1 $ fromGender gender
+		pokeElemOff q2 2 $ fromProfession profession
+		pokeElemOff q2 3 $ fromCulture culture
 
 		let q = castPtr p :: Ptr Int32
-		pokeElemOff q 1 (age_ :: Int32)
-		pokeElemOff q 2 (fromID id_ :: Int32)
-		pokeElemOff q 3 (fromID lover_ :: Int32)
+		pokeElemOff q 1 (age :: Int32)
+		pokeElemOff q 2 (fromID id :: Int32)
+		pokeElemOff q 3 (fromID lover :: Int32)
 		pokeElemOff q 4 (fromID parrents1 :: Int32)
 		pokeElemOff q 5 (fromID parrents2 :: Int32)
 		pokeElemOff q 6 (position1 :: Int32)
@@ -121,7 +124,7 @@ instance Storable Person where
 
 
 instance Eq Person where
-	p1 == p2 = getId p1 == getId p2
+	p1 == p2 = id p1 == id p2
 
 type Childrens = VB.Vector (Vector ID)
 type Friends = VB.Vector (Vector ID)
