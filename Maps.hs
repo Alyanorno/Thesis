@@ -10,6 +10,8 @@ import Data.Vector.Storable (Vector)
 import qualified Data.Vector as VB
 import qualified Data.Vector.Storable as V
 
+import Foreign.Storable.Tuple ()
+
 import qualified Data.List as L
 
 import Data.Int (Int32)
