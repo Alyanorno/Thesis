@@ -18,3 +18,5 @@
 *.xlsx
 *.jpg
 *.xcf
+.stack-work
+src-temp/

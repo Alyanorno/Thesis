@@ -78,7 +78,7 @@ rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
 
 
 startPopulation :: Int -> People
-startPopulation a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age_ (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age_ = fromIntegral $ f (i-off) a]
+startPopulation a = let off = a * 3; ti = [off+1..off+1+a*2] in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age_ (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip ti $ zip (take (length ti) $ cycle [male, female]) $ zip (infinitly allProfessions (length ti)) (infinitly allCultures (length ti)), let age_ = fromIntegral $ f (i-off) a]
 	where
 		f :: Int -> Int -> Int
 		f i top
@@ -86,7 +86,7 @@ startPopulation a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ r
 			| i >= floor ((fromIntegral top :: Float) * 0.30) = 20
 			| i >= floor ((fromIntegral top :: Float) * 0.10) = 40
 			| otherwise = 60
-		infinitly x = cycle $ concat $ zipWith (\a1 a2 -> a1 : a2 : []) x x
+		infinitly x size = take size $ cycle $ concat $ zipWith (\a1 a2 -> a1 : a2 : []) x x
 
 distanceTo :: (Float,Float) -> (Float,Float) -> Float
 distanceTo (x,y) (x',y') = (x-x')^(2 :: Int) + (y-y')^(2 :: Int)

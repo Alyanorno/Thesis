@@ -36,17 +36,21 @@ createRelations gen friendss people alivePeople professionals professionalRelati
 	let randomGenerators = map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift gen)
 	let genWithRanges = zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
 
-	f <- VB.unsafeThaw friendss
+--	f <- VB.unsafeThaw friendss
+	f <- VB.thaw friendss
 --	fRef <- newMVar f
 	applyFriendMatches f genWithRanges
 --	t1 <- takeMVar fRef
-	f' <- VB.unsafeFreeze f
+--	f' <- VB.unsafeFreeze f
+	f' <- VB.freeze f
 
-	v <- V.unsafeThaw people
+--	v <- V.unsafeThaw people
+	v <- V.thaw people
 --	vRef <- newMVar v
 	applyLoveMatches v f' genWithRanges
 --	t2 <- takeMVar vRef
-	v' <- V.unsafeFreeze v
+--	v' <- V.unsafeFreeze v
+	v' <- V.freeze v
 
 	return (v', f')
 	where

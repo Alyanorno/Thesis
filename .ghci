@@ -1,4 +1,5 @@
-:set -fwarn-unused-binds -fwarn-unused-imports
 :set -Wall
+:set -fwarn-unused-binds -fwarn-unused-imports
+:set -fno-warn-tabs -fno-warn-type-defaults
 :set -isrc
-:load main.hs
+:load src/main.hs

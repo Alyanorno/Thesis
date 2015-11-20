@@ -1,1 +1,0 @@
-ghc --make main.hs -O3 -feager-blackholing -fno-warn-tabs -threaded -rtsopts -funfolding-use-threshold1000 -funfolding-keeness-factor1000 -fforce-recomp
