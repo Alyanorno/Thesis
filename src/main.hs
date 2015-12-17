@@ -1,7 +1,6 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns, FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE BangPatterns, FlexibleContexts, TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-
 
 import Prelude hiding (id)
 import GHC.Float
@@ -41,9 +40,9 @@ main :: IO ()
 main = do
 	args <- getArgs
 
-	let doPop = any (=="pop") args
-	let doCult = any (=="cult") args
-	let doProf = any (=="prof") args
+	let doPop = "pop" `elem` args
+	let doCult = "cult" `elem` args
+	let doProf = "prof" `elem` args
 
 	if doPop || doCult || doProf then do
 		putStrLn "Enter number of iterations (from and to): "
@@ -52,38 +51,39 @@ main = do
 		when doPop $ genPopulationMap2 n1 n2
 		when doCult $ genCultureMap n1 n2
 		when doProf $ genProfessionMap n1 n2
-	else if any (=="perf") args then do
+	else if "perf" `elem` args then do
 		putStrLn "Enter iterations to test (list): "
 		n <- getLine
-		let options = ["--csv", "mainPerf.csv"]
+		let options = []
+--		let options = ["--csv", "mainPerf.csv"]
 --		let options = ["--output", "mainPerf.html"]
 		withArgs options $ defaultMain [bench a $ nf createGeneration (read a) | a <- words n]
-	else if any (=="connections") args then do
+	else if "connections" `elem` args then do
 		putStrLn "Enter number of iterations: "
 		n <- getLine
 		putStrLn ""
 		let (g, friendss,_) = createGeneration (read n)
 		let (map',_) = createMaps g
 
-		let index = fromJust $ L.findIndex (=="connections") args
+		let index = fromJust $ L.elemIndex "connections" args
 		let comp = case args !! (index + 1) of
 			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
 			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
 			_ -> error "Second argument for connections must be either \"culty\" or \"profy\""
 
-		let name = "connections" ++ (let a = args !! (index + 2) in (toUpper $ head a) : (tail a)) ++ ".png"
+		let name = "connections" ++ (let a = args !! (index + 2) in toUpper (head a) : tail a) ++ ".svg"
 		let r1 = selectRelations g (not.comp) friendss (V.head g)
 		let r2 = selectRelations g comp friendss (V.head g)
 
 		putStrLn "Starting connections rendering"
 		renderDiagram name (mapRelations map' r1 r2)
 		putStrLn "Completed connections rendering"
-	else if any (=="map") args then do
-		putStrLn "Enter number of iterations: "
+	else if "map" `elem` args then do
+		putStrLn "Enter number of iterations for map: "
 		n <- getLine
 		putStrLn ""
 
-		let index = fromJust $ L.findIndex (=="map") args
+		let index = fromJust $ L.elemIndex "map" args
 		let comp = case args !! (index + 1) of
 			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
 			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
@@ -91,8 +91,8 @@ main = do
 
 		let (g,_,_) = createGeneration (read n)
 		let g' = V.filter alive g
-		let name = "map" ++ (let a = args !! (index + 2) in (toUpper $ head a) : (tail a)) ++ ".svg"
-		let range = fromIntegral $ mapRange
+		let name = "map" ++ (let a = args !! (index + 2) in toUpper (head a) : tail a) ++ ".svg"
+		let range = fromIntegral mapRange
 
 		putStrLn "Starting map rendering"
 		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) $ V.filter comp g'
@@ -102,8 +102,8 @@ main = do
 		n <- getLine
 		let (g, friendss,childrens) = createGeneration (read n)
 		let g' = V.filter alive g
-		let toProcent x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g')
-		let toProcent2 x = floor $ (*) 100 $ (int2Float x) / (int2Float $ V.length g)
+		let toProcent x = floor $ (*) 100 $ int2Float x / int2Float (V.length g')
+		let toProcent2 x = floor $ (*) 100 $ int2Float x / int2Float (V.length g)
 		putStrLn ""
 		putStrLn $ "Child: " ++ (show . VB.foldr (+) 0 . VB.map V.length $ childrens)
 		putStrLn $ "Total: " ++ (show . V.length $ g)
@@ -122,20 +122,19 @@ main = do
 		let fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id $ V.head g)))))
 		let distanceGraph = calculateDistanceGraph $ fromIDtoGraph friendss
 		let numberOf value = VB.sum $ VB.map (V.length . V.filter (==value)) distanceGraph
-		when (any (=="path") args) (putStrLn $ "Path: " ++ (show [numberOf v | v <- [0..10]]))
+		when ("path" `elem` args) (putStrLn $ "Path: " ++ show [numberOf v | v <- [0..10]])
 
 		putStrLn ""
 
 	putStrLn "---------------------"
 	putStrLn ""
 
-	when (any (=="loop") args) $ do
-		main
+	when ("loop" `elem` args) main
 
 
 
 
-renderDiagram name a = renderSVG name dimensions a
+renderDiagram name = renderSVG name dimensions
 	where dimensions = mkSizeSpec2D (Just 1000) (Just 1000)
 
 mapRelations :: [[Int]] -> VB.Vector [Int] -> VB.Vector [Int] -> Diagram B
@@ -168,7 +167,7 @@ mapRelations p r sr = baseLines <> redLines <> circles
 	superTiny = normalized 0.002
 
 	spacing = 15
-	range = fromIntegral $ mapRange
+	range = fromIntegral mapRange
 
 	node :: Int -> Diagram B
 	node n = circle 0.2 # fc black # lwG 0 # named n
@@ -176,20 +175,20 @@ mapRelations p r sr = baseLines <> redLines <> circles
 selectRelations g comp friendss start = VB.imap (\i a -> if (comp.(g !)) i then a else filter (comp.(g !)) a) $ createRelations start friendss
 
 createMaps g = (VB.toList $ VB.map V.toList $ peopleMap (r*r) g, VB.toList $ VB.map V.length $ peopleMap (r*r) g)
-	where r :: Int; r = fromIntegral $ mapRange
+	where r :: Int; r = fromIntegral mapRange
 createRelations start f = VB.map V.toList $ fromIDtoGraph f
-	where fromIDtoGraph = VB.map ((V.filter (>=0)).(V.map (fromID.(+(-(id start))))))
+	where fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id start)))))
 
 peopleMap :: Int -> People -> VB.Vector (Vector Int)
 peopleMap size people = VB.unsafeAccumulate V.snoc (VB.replicate size V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert people
-	where f p = ((fromIntegral.(\(x,y) -> x + y * mapRange).position) p, fromID $ (id p) - (id $ V.head people))
+	where f p = ((fromIntegral.(\(x,y) -> x + y * mapRange).position) p, fromID $ id p - id (V.head people))
 
 
 genPopulationMap2 :: String -> String -> IO ()
 genPopulationMap2 n1 n2 = mapM_ (\index -> do
 		let (g,_,_) = createGeneration index
-		let name = "data/populationMap" ++ (show index) ++ ".svg"
-		let range = fromIntegral $ mapRange
+		let name = "data/populationMap" ++ show index ++ ".svg"
+		let range = fromIntegral mapRange
 
 		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) g
 		) [read n1..read n2]
@@ -197,13 +196,13 @@ genPopulationMap2 n1 n2 = mapM_ (\index -> do
 biggestPopulation = 100 :: Double
 
 populationMapToDiagram :: VB.Vector Int -> Diagram B
-populationMapToDiagram population = hsep biggestPopulation [((populationSquares # center) `atop` square (biggestPopulation * (fromIntegral mapRange))), example]
+populationMapToDiagram population = hsep biggestPopulation [(populationSquares # center) `atop` square (biggestPopulation * fromIntegral mapRange), example]
 	where
 	populationSquares :: Diagram B
 	populationSquares = gridCat $ map ((((sq biggestPopulation :: D V2 Double) # phantom) `atop`) . sq . (\x -> if x > biggestPopulation then biggestPopulation else x) . fromIntegral) $ VB.toList population
 
 	example :: Diagram B
-	example = vsep biggestPopulation $ [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation * (3/4)), sq (biggestPopulation / 2), sq (biggestPopulation / 4), hsep biggestPopulation [sq 1, f "1"]]
+	example = vsep biggestPopulation [sq biggestPopulation ||| f (show $ floor biggestPopulation), sq (biggestPopulation * (3/4)), sq (biggestPopulation / 2), sq (biggestPopulation / 4), hsep biggestPopulation [sq 1, f "1"]]
 		where f s = scale biggestPopulation $ text s <> rect 3 1 # lw n
 
 	sq s = square s # fc red # lwG 0
@@ -223,39 +222,36 @@ genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name)
 		| x < 10 = 50
 		| x < 50 = 50 + x * 3
 		| otherwise = 200
-	let toText :: ((Int32, Int32), Int) -> String; toText ((x, y), a) = (show x) ++ " " ++ (show y) ++ " " ++ (show $ 255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n"
-	t <- return $ concat $ map toText $ concat $ positions
+	let toText :: ((Int32, Int32), Int) -> String; toText ((x, y), a) = show x ++ " " ++ show y ++ " " ++ show (255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ show (if a == 0 then 0 else 255) ++ "\n"
+	let t = concatMap toText $ concat positions
 --	forkIO $ do
-	h <- openBinaryFile name WriteMode
-	hPutStrLn h t
-	putStrLn $ "Written: " ++ name
-	hClose h)
-	$ zip range $ map (\i -> "data/populationMap" ++ (show i) ++ ".txt") range
+	writeFile name t
+	putStrLn $ "Written: " ++ name)
+
+	$ zip range $ map (\i -> "data/populationMap" ++ show i ++ ".txt") range
 
 
 genCultureMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
 	let f p c
 		| V.null p = 0
-		| otherwise = float2Int $ (int2Float $ V.length $ V.filter ((==c).culture) p) / (int2Float $ V.length p) * 255
+		| otherwise = float2Int $ int2Float (V.length $ V.filter ((==c).culture) p) / int2Float (V.length p) * 255
 	let (g,_,_) = createGeneration index
 	let !g' = V.filter alive g
 	let !positions = [[((x,y), [f p c | c <- allCultures])  | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 --	hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
-	t <- return $ concat $ map (foldr (\((x,y),c) list -> (show x) ++ " " ++ (show y) ++ " " ++ (setColour c) ++ "\n" ++ list) "") positions
+	let t = concatMap (foldr (\((x,y),c) list -> show x ++ " " ++ show y ++ " " ++ setColour c ++ "\n" ++ list) "") positions
 --	forkIO $ do
-	h <- openBinaryFile name WriteMode
-	hPutStrLn h t
-	putStrLn $ "Written: " ++ name
-	hClose h)
-	$ zip range $ map (\i -> "data/cultureMap" ++ (show i) ++ ".txt") range
+	writeFile name t
+	putStrLn $ "Written: " ++ name)
+	$ zip range $ map (\i -> "data/cultureMap" ++ show i ++ ".txt") range
 
 setColour2 c
-	| c !! 2 > 0 = (show (c !! 2)) ++ " 0 0 255"
+	| c !! 2 > 0 = show (c !! 2) ++ " 0 0 255"
 	| otherwise = "0 0 0 0"
 
 setColour :: [Int] -> String
 setColour c
-	| foldr1 (+) c == 0 = "0 0 0 0"
+	| sum c == 0 = "0 0 0 0"
 	| b == 0 = "255 0 0 255"
 	| b == 1 = "0 255 0 255"
 	| b == 2 = "0 0 255 255"
@@ -267,17 +263,15 @@ setColour c
 genProfessionMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
 	let f :: People -> Int; f l
 		| V.null l = 0
-		| otherwise = (V.foldr (\x list -> list + ((*) 100 $ professionValue $ profession x)) 0 l) `div` (V.length l)
+		| otherwise = V.foldr (\x list -> list + (*) 100 (professionValue $ profession x)) 0 l `div` V.length l
 	let (g,_,_) = createGeneration index
 	let !g' = V.filter alive g
 	let !positions = [[((x,y), f p) | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
-	t <- return $ concat $ map (foldr (\((x,y),a) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ (show $ if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
+	let t = concatMap (foldr (\((x,y),a) list -> show x ++ " " ++ show y ++ " " ++ show a ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ show (if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
 --	forkIO $ do
-	h <- openBinaryFile name WriteMode
-	hPutStrLn h t
-	putStrLn $ "Written: " ++ name
-	hClose h)
-	$ zip range $ map (\i -> "data/professionMap" ++ (show i) ++ ".txt") range
+	writeFile name t
+	putStrLn $ "Written: " ++ name)
+	$ zip range $ map (\i -> "data/professionMap" ++ show i ++ ".txt") range
 
 
 calculateDistanceGraph :: VB.Vector (Vector Int) -> VB.Vector (Vector Int)
@@ -298,6 +292,6 @@ generations seed i n previous
 	| i >= n = previous
 	| otherwise = next
 	where 
-		next = generations seed (i+1) n $ ((change gen).(birth gen).(death gen)) previous
+		next = generations seed (i+1) n $ (change gen . birth gen . death gen) previous
 		gen = Xorshift $ (randomRs (minBound :: Int64, maxBound :: Int64) seed :: [Int64]) !! i
 

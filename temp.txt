@@ -1,0 +1,41 @@
+Build & Run:
+-feager-blackholing
+-fforce-recomp
+-fno-ignore-asserts
+-fno-warn-tabs
+-funfolding-use-threshold1000
+-funfolding-keeness-factor1000
+-fno-liberate-case (? Test make everything strict, doesnt seem to work)
+
+ghc --make main.hs -O3 -feager-blackholing -fno-warn-tabs -threaded -rtsopts
+
+main.exe +RTS -N1 -s -qa -qg -qb (-qm?)
+
+Errors during writing:
+ghcid --height=8 --topmost
+
+Profiling:
+-prof + -xc	// Stack trace when crashes
+-prof -fprof-auto + -p	// Time profiling (single thread)
+
+Vim:
+:set cursorline
+
+Debug:
+ghci main.hs change.hs birth.hs stuff.hs
+:add *main.hs
+:set -fbreak-on-exception
+:trace main
+
+:hist
+:list
+:bindings
+
+LLVM 3.4 Windows Binaries
+https://github.com/CRogers/LLVM-Windows-Binaries
+
+
+Calculate source size:
+findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | find /c /v "~~~"
+findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | findstr /V /R "::" | find /c /v "~~~"
+Note: find /c ":" also works but not individual files

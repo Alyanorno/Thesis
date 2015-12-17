@@ -1,0 +1,34 @@
+Threading:
+main.exe +RTS -N1 -s
+
+Errors during writing:
+ghcid --height=8 --topmost -c "stack ghci"
+
+Code suggestions:
+hlint "--ignore=Evaluate" "--ignore=Redundant id" "--ignore=Redundant return" src/
+
+Debug:
+stack ghci
+:cd P:\Users\Partim\Desktop\Thesis-Code\src
+:add *main.hs
+:set -fbreak-on-exception
+:break Change 30
+:trace main
+
+:hist
+:list
+:bindings
+
+
+Profiling:
+stack build -executable-profiling
+main.exe -xc // Stack trace when chrashing
+
+
+LLVM 3.4 Windows Binaries
+https://github.com/CRogers/LLVM-Windows-Binaries
+
+Calculate source size:
+findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | find /c /v "~~~"
+findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | findstr /V /R "::" | find /c /v "~~~"
+Note: find /c ":" also works but not individual files

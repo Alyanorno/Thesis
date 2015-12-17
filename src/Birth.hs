@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-
 module Birth (birth) where
 
 
@@ -34,12 +32,12 @@ birth gen (people, friends,_) = (people V.++ add, friends VB.++ VB.replicate (V.
 		babyMakers = V.toList $ V.filter conditions people
 			where 
 			conditions :: Person -> Bool
-			conditions a = (((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive) a
+			conditions = ((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive
 
 		numberOfBabies :: [Int]
-		numberOfBabies = take (length babyMakers) $ (randomRs (0, timeStep `div` 2) gen :: [Int])
+		numberOfBabies = take (length babyMakers) (randomRs (0, timeStep `div` 2) gen :: [Int])
 
-		ids = [start..start + foldr1 (+) numberOfBabies]
+		ids = [start..start + sum numberOfBabies]
 		start = fromID $ ((+1).id.V.last) people
 
 

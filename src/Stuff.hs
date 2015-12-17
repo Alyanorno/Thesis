@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# LANGUAGE BangPatterns #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
@@ -22,10 +22,10 @@ import Definitions
 
 
 {-# INLINE (.&&.) #-}
-(.&&.) f g !a = (f a) && (g a)
+(.&&.) f g !a = f a && g a
 infixr 4 .&&.
 {-# INLINE (.||.) #-}
-(.||.) f g !a = (f a) || (g a)
+(.||.) f g !a = f a || g a
 infixr 4 .||.
 
 {-# INLINE (!) #-}
@@ -37,11 +37,11 @@ infixr 4 .||.
 
 {-# INLINE (&!) #-}
 (&!) :: People -> ID -> Person
-(&!) people i = V.unsafeIndex people $ fromID (i - (id $ V.head people))
+(&!) people i = V.unsafeIndex people $ fromID (i - id (V.head people))
 
 safeAccess :: People -> ID -> Maybe Person
 safeAccess people i = if (ix < 0) || (ix > V.length people) then Nothing else Just (people ! ix)
-	where ix = fromID $ i - (id $ V.head people)
+	where ix = fromID $ i - id (V.head people)
 
 
 
@@ -66,14 +66,14 @@ randomVector_ n g = if n <= 0 then (V.empty, g) else runST $ do { v <- M.new n; 
 
 
 --rescale :: Int -> Int -> Int -> Int
-rescale maxX maxY a = floor $ (fromIntegral a) * ((fromIntegral maxY :: Float) / (fromIntegral maxX :: Float))
+rescale maxX maxY a = floor (fromIntegral a * ((fromIntegral maxY :: Float) / (fromIntegral maxX :: Float)))
 
 --rescale_ :: Int -> Float -> Int -> Float
-rescale_ maxX maxY a = (fromIntegral a) * (maxY / (fromIntegral maxX))
+rescale_ maxX maxY a = fromIntegral a * maxY / fromIntegral maxX
 
 
 start :: Int -> People
-start a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ repeat (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0))) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
+start a = let off = a * 3 in V.fromList $ replicate (fromIntegral off) (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0)) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
 	where
 		f :: Int -> Int -> Int
 		f i max
@@ -81,7 +81,7 @@ start a = let off = a * 3 in V.fromList $ (take (fromIntegral off) $ repeat (Per
 			| i >= floor ((fromIntegral max :: Float) * 0.30) = 20
 			| i >= floor ((fromIntegral max :: Float) * 0.10) = 40
 			| otherwise = 60
-		infinitly x = cycle $ concat $ zipWith (\a b -> a : b : []) x x
+		infinitly x = cycle $ concat $ zipWith (\a b -> [a, b]) x x
 
 distanceTo :: (Float,Float) -> (Float,Float) -> Float
 distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
@@ -106,17 +106,17 @@ scaleDistanceFromCenter :: Float -> Float
 scaleDistanceFromCenter a = 100 - a * 1
 
 scaleDistanceFromCulturalCenter :: Float -> Float
-scaleDistanceFromCulturalCenter = (*) (0-0.1)
+scaleDistanceFromCulturalCenter = (*) (negate (0.1 :: Float))
 
 scaleConcentrationOfPeople :: Float -> Float
-scaleConcentrationOfPeople x = if x < -50000 then infinity else (0-x) ** 1.2 -- ( (-) 0).((**) 1.5)
+scaleConcentrationOfPeople x = if x < -50000 then infinity else negate x ** 1.2 -- ( (-) 0).((**) 1.5)
 
 scaleCulturalMap :: Float -> Float
 scaleCulturalMap = (*1)
 
 staticTerrainMap :: Vector Float
-staticTerrainMap = V.fromList $ [base ! ((rescale mapRange 50 x) + (rescale mapRange 50 y) * 50) | x <- [0..mapRange-1], y <- [0..mapRange-1]]
-	where base = V.fromList $ map (\x -> if x == 1 then -10000 else x) $ map (\x -> if x == 2 then infinity else x) $ concat --(V.fromList $ take (mapRange*mapRange) $ repeat 0.0) V.// mountain
+staticTerrainMap = V.fromList [base ! (rescale mapRange 50 x + rescale mapRange 50 y * 50) | x <- [0..mapRange-1], y <- [0..mapRange-1]]
+	where base = V.fromList $ map ((\x -> if x == 1 then -10000 else x) . (\x -> if x == 2 then infinity else x)) $ concat
 		[
 		[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
 		[2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2],
@@ -181,7 +181,7 @@ professionValue prof
 	| otherwise = 0
 
 boxFilter :: Vector Float -> Vector Float
-boxFilter list = V.imap (\i a -> let f = access a in (a + (f $ i-1) + (f $ i+1) + (f $ i-(fromIntegral mapRange)) + (f $ i+(fromIntegral mapRange)) / 5)) list
+boxFilter list = V.imap (\i a -> let f = access a in (a + f (i-1) + f (i+1) + f (i - fromIntegral mapRange) + f (i + fromIntegral mapRange) / 5)) list
 	where
 		access a i = if i < 0 || i >= V.length list then a else list ! i
 

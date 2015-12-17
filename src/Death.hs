@@ -1,5 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
-
 module Death where
 
 import Prelude hiding (id)
@@ -22,7 +20,7 @@ death gen (people, friends, childrens) = (V.zipWith testIfDead people' randomNum
 		randomNumbers = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		people' = V.filter ((<80).age) $ V.map (\a -> a {age = (age a) + (fromIntegral timeStep)}) people
+		people' = V.filter ((<80).age) $ V.map (\a -> a {age = age a + fromIntegral timeStep}) people
 		testIfDead :: Person -> Float -> Person
 		testIfDead p r
 			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 
@@ -33,7 +31,7 @@ death gen (people, friends, childrens) = (V.zipWith testIfDead people' randomNum
 			| a < 70 = if r < 0.987259 .^ timeStep' then p else p {dead = 1}
 			| a < 80 = if r < 0.974004 .^ timeStep' then p else p {dead = 1}
 			| otherwise = p {dead = 1}
-			where a = age p; (.^) a1 b1 = (**) a1 b1
+			where a = age p; (.^) = (**)
 		timeStep' :: Float
 		timeStep' = fromIntegral timeStep
 

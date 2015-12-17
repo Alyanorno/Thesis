@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, BangPatterns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
@@ -66,7 +66,7 @@ newtype Gender = Gender {fromGender :: Word8} deriving (Show, Eq)
 (male:female:_) = map Gender ([0..] :: [Word8])
 
 alive :: Person -> Bool
-alive p = if dead p == 0 then True else False
+alive p = dead p == 0
 data Person = Person {
 	dead :: {-# UNPACK #-} !Word8,
 	gender :: {-# UNPACK #-} !Gender,
