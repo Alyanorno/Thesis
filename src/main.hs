@@ -36,100 +36,103 @@ import Change
 import Death
 
 
+
 main :: IO ()
 main = do
-	args <- getArgs
+	args <- liftM parse getArgs :: IO [OptionsType]
 
-	let doPop = "pop" `elem` args
-	let doCult = "cult" `elem` args
-	let doProf = "prof" `elem` args
+	mapM_ doStuff args
 
-	if doPop || doCult || doProf then do
-		putStrLn "Enter number of iterations (from and to): "
-		n1 <- getLine
-		n2 <- getLine
-		when doPop $ genPopulationMap2 n1 n2
-		when doCult $ genCultureMap n1 n2
-		when doProf $ genProfessionMap n1 n2
-	else if "perf" `elem` args then do
-		putStrLn "Enter iterations to test (list): "
-		n <- getLine
-		let options = []
---		let options = ["--csv", "mainPerf.csv"]
---		let options = ["--output", "mainPerf.html"]
-		withArgs options $ defaultMain [bench a $ nf createGeneration (read a) | a <- words n]
-	else if "connections" `elem` args then do
-		putStrLn "Enter number of iterations: "
-		n <- getLine
-		putStrLn ""
-		let (g, friendss,_) = createGeneration (read n)
-		let (map',_) = createMaps g
+	let notFlag (Flag _) = False; notFlag _ = True
+	let flags = filter (not.notFlag) args
+	unless (any notFlag args) (defaultDoStuff flags)
 
-		let index = fromJust $ L.elemIndex "connections" args
-		let comp = case args !! (index + 1) of
-			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
-			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
-			_ -> error "Second argument for connections must be either \"culty\" or \"profy\""
 
-		let name = "connections" ++ (let a = args !! (index + 2) in toUpper (head a) : tail a) ++ ".svg"
-		let r1 = selectRelations g (not.comp) friendss (V.head g)
-		let r2 = selectRelations g comp friendss (V.head g)
+defaultDoStuff flags = do
+	putStrLn "Enter number of iterations: "
+	n <- getLine
+	let (g, friendss,childrens) = createGeneration (read n)
+	let g' = V.filter alive g
+	let toProcent x = floor $ (*) 100 $ int2Float x / int2Float (V.length g')
+	let toProcent2 x = floor $ (*) 100 $ int2Float x / int2Float (V.length g)
+	putStrLn ""
+	putStrLn $ "Child: " ++ (show . VB.foldr (+) 0 . VB.map V.length $ childrens)
+	putStrLn $ "Total: " ++ (show . V.length $ g)
+	putStrLn $ "Alive: " ++ (show . toProcent2 . V.length $ g') ++ "% "
+	putStrLn $ "Lover: " ++ (show . toProcent . V.length . V.filter ((/=0) . lover .&&. (<41) . age) $ g') ++ "%"
+	putStr "Cult:  "
+	VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allCulturesVector (cultureToInt . culture) g'
+	putStrLn ""
+	putStr "Prof:  "
+	VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allProfessionsVector (professionToInt . profession) g'
+	putStrLn ""
 
-		putStrLn "Starting connections rendering"
-		renderDiagram name (mapRelations map' r1 r2)
-		putStrLn "Completed connections rendering"
-	else if "map" `elem` args then do
-		putStrLn "Enter number of iterations for map: "
-		n <- getLine
-		putStrLn ""
+	let fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id $ V.head g)))))
+	let distanceGraph = calculateDistanceGraph $ fromIDtoGraph friendss
+	let numberOf value = VB.sum $ VB.map (V.length . V.filter (==value)) distanceGraph
+	when (Flag "path" `elem` flags) (putStrLn $ "Path: " ++ show [numberOf v | v <- [0..10]])
 
-		let index = fromJust $ L.elemIndex "map" args
-		let comp = case args !! (index + 1) of
-			"culty" -> (==(stringToCulture $ args !! (index + 2))).culture
-			"profy" -> (==(stringToProfession $ args !! (index + 2))).profession
-			_ -> error "Second argument for map must be either \"culty\" or \"profy\""
-
-		let (g,_,_) = createGeneration (read n)
-		let g' = V.filter alive g
-		let name = "map" ++ (let a = args !! (index + 2) in toUpper (head a) : tail a) ++ ".svg"
-		let range = fromIntegral mapRange
-
-		putStrLn "Starting map rendering"
-		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) $ V.filter comp g'
-		putStrLn "Completed map rendering"
-	else do
-		putStrLn "Enter number of iterations: "
-		n <- getLine
-		let (g, friendss,childrens) = createGeneration (read n)
-		let g' = V.filter alive g
-		let toProcent x = floor $ (*) 100 $ int2Float x / int2Float (V.length g')
-		let toProcent2 x = floor $ (*) 100 $ int2Float x / int2Float (V.length g)
-		putStrLn ""
-		putStrLn $ "Child: " ++ (show . VB.foldr (+) 0 . VB.map V.length $ childrens)
-		putStrLn $ "Total: " ++ (show . V.length $ g)
-		putStrLn $ "Alive: " ++ (show . toProcent2 . V.length $ g') ++ "% "
-		putStrLn $ "Lover: " ++ (show . toProcent . V.length . V.filter ((/=0) . lover .&&. (<41) . age) $ g') ++ "%"
---		print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
---		print $ [VB.length $ VB.filter (((min<=) .&&. (<max)).age) g'' | let ages = [0,4..80] ++ [130], (min,max) <- zip ages (tail ages)]
---		print $ (VB.length $ VB.filter ((==female).gender) g', VB.length $ VB.filter ((==male).gender) g')
-		putStr "Cult:  "
-		VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allCulturesVector (cultureToInt . culture) g'
-		putStrLn ""
-		putStr "Prof:  "
-		VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allProfessionsVector (professionToInt . profession) g'
-		putStrLn ""
-
-		let fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id $ V.head g)))))
-		let distanceGraph = calculateDistanceGraph $ fromIDtoGraph friendss
-		let numberOf value = VB.sum $ VB.map (V.length . V.filter (==value)) distanceGraph
-		when ("path" `elem` args) (putStrLn $ "Path: " ++ show [numberOf v | v <- [0..10]])
-
-		putStrLn ""
-
+	putStrLn ""
 	putStrLn "---------------------"
 	putStrLn ""
 
-	when ("loop" `elem` args) main
+	when (Flag "loop" `elem` flags) main
+
+doStuff :: OptionsType -> IO ()
+doStuff (Pop a b) = genPopulationMap2 a b
+doStuff (Cult a b) = genCultureMap a b
+doStuff (Prof a b) = genProfessionMap a b
+doStuff (Perf outType outFile iter) = withArgs [outType, outFile] . defaultMain . map (\a -> bench (show a) $ nf createGeneration a) $ iter
+doStuff (Connections i t st) = renderDiagram name (mapRelations map' r1 r2)
+	where
+	name = "connections" ++ (toUpper (head st) : tail st) ++ ".svg"
+	r1 = selectRelations g (not.comp) friendss (V.head g)
+	r2 = selectRelations g comp friendss (V.head g)
+
+	(g, friendss,_) = createGeneration i
+	(map',_) = createMaps g
+
+	comp = case t of
+		"cult" -> (== stringToCulture st).culture
+		"prof" -> (== stringToProfession st).profession
+		_ -> error "Second argument for connections must be either \"cult\" or \"prof\""
+doStuff (Heatmap name i t st) = renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) $ V.filter comp g'
+	where
+	comp = case t of
+		"cult" -> (== stringToCulture st).culture
+		"prof" -> (== stringToProfession st).profession
+		_ -> error "Second argument for map must be either \"cult\" or \"prof\""
+
+	(g,_,_) = createGeneration i
+	g' = V.filter alive g
+	name = "map" ++ (toUpper (head st) : tail st) ++ ".svg"
+	range = fromIntegral mapRange
+doStuff Help = do
+	putStrLn "Thesis Work - Rickard Fridvall"
+	putStrLn ""
+	putStrLn "pop - [Iteration Start] [Iteration End]"
+	putStrLn "cult - [Iteration Start] [Iteration End]"
+	putStrLn "prof - [Iteration Start] [Iteration End]"
+	putStrLn "perf - [Output Type] [Output File] [Iteration1] [Iteration2] [Iteration3]..."
+	putStrLn "connections - [Iteration] [For \"cult\" or \"prof\"] [Subname]"
+	putStrLn "map - [Output File] [Iteration] [For \"cult\" or \"prof\"] [Subname]"
+	putStrLn "help - No args"
+doStuff (Flag _) = return ()
+
+parse (a:ls)
+	| a == "pop" = Pop (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
+	| a == "cult" = Cult (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
+	| a == "prof" = Prof (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
+	| a == "perf" = [Perf (ls!!0) (ls!!1) (map read (drop 2 ls))]
+	| a == "connections" = Connections (read (ls!!0)) (ls!!1) (ls!!2) : parse (drop 3 ls)
+	| a == "map"  = Heatmap (ls!!0) (read (ls!!1)) (ls!!2) (ls!!3) : parse (drop 4 ls)
+	| a == "help" = [Help]
+	| otherwise = Flag a : parse ls
+parse [] = []
+
+data OptionsType = Pop Int Int | Cult Int Int | Prof Int Int | Perf String String [Int] | Connections Int String String | Heatmap String Int String String | Help | Flag String deriving (Eq)
+
+
 
 
 
@@ -184,14 +187,14 @@ peopleMap size people = VB.unsafeAccumulate V.snoc (VB.replicate size V.empty) $
 	where f p = ((fromIntegral.(\(x,y) -> x + y * mapRange).position) p, fromID $ id p - id (V.head people))
 
 
-genPopulationMap2 :: String -> String -> IO ()
+genPopulationMap2 :: Int -> Int -> IO ()
 genPopulationMap2 n1 n2 = mapM_ (\index -> do
 		let (g,_,_) = createGeneration index
 		let name = "data/populationMap" ++ show index ++ ".svg"
 		let range = fromIntegral mapRange
 
 		renderDiagram name $ populationMapToDiagram $ VB.map V.length $ peopleMap (range*range) g
-		) [read n1..read n2]
+		) [n1..n2]
 
 biggestPopulation = 100 :: Double
 
@@ -206,41 +209,32 @@ populationMapToDiagram population = hsep biggestPopulation [(populationSquares #
 		where f s = scale biggestPopulation $ text s <> rect 3 1 # lw n
 
 	sq s = square s # fc red # lwG 0
---	sq s = roundedRect s s (s / 4) # fc black # lwG 0
-
 	n = Diagrams.Prelude.none
-
---	biggestPopulation = fromIntegral $ F.maximum population :: Double
-
 
 genPopulationMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
 	let (g,_,_) = createGeneration index
 	let g' = V.filter alive g
 	let positions = let list = V.filter (/=(0,0)) $ V.map position g' in [[((x,y), V.length $ V.filter (\(x',y') -> x == x' && y == y') list) | x <- [0..mapRange]] | y <- [0..mapRange]]
-	let f x--let r = x * 4 in if r > 255 then 255 else r
+	let f x
 		| x == 0 = 0
 		| x < 10 = 50
 		| x < 50 = 50 + x * 3
 		| otherwise = 200
 	let toText :: ((Int32, Int32), Int) -> String; toText ((x, y), a) = show x ++ " " ++ show y ++ " " ++ show (255 - f a) ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ show (if a == 0 then 0 else 255) ++ "\n"
 	let t = concatMap toText $ concat positions
---	forkIO $ do
 	writeFile name t
 	putStrLn $ "Written: " ++ name)
-
 	$ zip range $ map (\i -> "data/populationMap" ++ show i ++ ".txt") range
 
 
-genCultureMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
+genCultureMap n1 n2 = let range = [n1..n2] in mapM_ (\(index, name) -> do
 	let f p c
 		| V.null p = 0
 		| otherwise = float2Int $ int2Float (V.length $ V.filter ((==c).culture) p) / int2Float (V.length p) * 255
 	let (g,_,_) = createGeneration index
 	let !g' = V.filter alive g
 	let !positions = [[((x,y), [f p c | c <- allCultures])  | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
---	hPutStrLn h $ concat $ map (foldr (\((x,y),r,g,b) list -> (show x) ++ " " ++ (show y) ++ " " ++ (show r) ++ " " ++ (show g) ++ " " ++ (show b) ++ " " ++ (show $ if r + g + b == 0 then 0 else 255) ++ "\n" ++ list) "") positions))
 	let t = concatMap (foldr (\((x,y),c) list -> show x ++ " " ++ show y ++ " " ++ setColour c ++ "\n" ++ list) "") positions
---	forkIO $ do
 	writeFile name t
 	putStrLn $ "Written: " ++ name)
 	$ zip range $ map (\i -> "data/cultureMap" ++ show i ++ ".txt") range
@@ -260,7 +254,7 @@ setColour c
 		b = snd $ L.maximumBy (comparing fst) $ zip c [0..]
 
 
-genProfessionMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name) -> do
+genProfessionMap n1 n2 = let range = [n1..n2] in mapM_ (\(index, name) -> do
 	let f :: People -> Int; f l
 		| V.null l = 0
 		| otherwise = V.foldr (\x list -> list + (*) 100 (professionValue $ profession x)) 0 l `div` V.length l
@@ -268,7 +262,6 @@ genProfessionMap n1 n2 = let range = [read n1..read n2] in mapM_ (\(index, name)
 	let !g' = V.filter alive g
 	let !positions = [[((x,y), f p) | x <- [0..mapRange], let p = V.filter ((\(x',y') -> x == x' && y == y').position) g'] | y <- [0..mapRange]]
 	let t = concatMap (foldr (\((x,y),a) list -> show x ++ " " ++ show y ++ " " ++ show a ++ " " ++ "0" ++ " " ++ "0" ++ " " ++ show (if a == 0 then 0 else 255) ++ "\n" ++ list) "") positions
---	forkIO $ do
 	writeFile name t
 	putStrLn $ "Written: " ++ name)
 	$ zip range $ map (\i -> "data/professionMap" ++ show i ++ ".txt") range

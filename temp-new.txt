@@ -31,4 +31,6 @@ https://github.com/CRogers/LLVM-Windows-Binaries
 Calculate source size:
 findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | find /c /v "~~~"
 findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | findstr /V /R "::" | find /c /v "~~~"
+echo off && for %i in (*.hs) do (echo %i && findstr /R "^." *.hs | findstr /V /R "\-\-" | findstr /V /R "where$" | find /c /v "~~~")
+echo on
 Note: find /c ":" also works but not individual files
