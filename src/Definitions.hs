@@ -130,6 +130,20 @@ type Childrens = VB.Vector (Vector ID)
 type Friends = VB.Vector (Vector ID)
 
 
+data Options = Options {
+	mapRange :: Int32,
+	timeStep :: Int,
+	peopleFromStart :: Int,
+	scaleDistanceFromCenter :: Float -> Float,
+	scaleDistanceFromCulturalCenter :: Float -> Float,
+	scaleConcentrationOfPeople :: Float -> Float,
+	scaleCulturalMap :: Float -> Float,
+	staticTerrainMap :: Vector Float,
+	staticProfessionalRelations :: VB.Vector (Vector Float),
+	professionValue :: Profession -> Float,
+	seed :: StdGen}
+
+
 newtype Xorshift = Xorshift {fromXorshift :: Int64} deriving (Show, Eq, Enum, Bounded)
 
 step :: Xorshift -> Xorshift

@@ -28,8 +28,8 @@ import Definitions
 
 
 
-createRelations :: Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
-createRelations generator friendss people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
+createRelations :: Options -> Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
+createRelations opt generator friendss people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = V.length people
 --	If fixed the result will not change depending on number of threads
 	let offset = 12 --numCapabilities
@@ -114,16 +114,16 @@ createRelations generator friendss people alivePeople professionals professional
 	match :: Int -> Person -> PureMT -> (Vector ID, PureMT)
 	match personIndex person gen
 		| V.null potentialMates = (V.empty, gen)
-		| otherwise = (\(r, g)-> (V.map (potentialMates !) $ scale r (V.length potentialMates-1), g)) $ randomVector_ (timeStep*4) gen'
+		| otherwise = (\(r, g)-> (V.map (potentialMates !) $ scale r (V.length potentialMates-1), g)) $ randomVector_ (timeStep'*4) gen'
 		where
 			potentialMates = potentialRandom V.++ potentialSameProfessional V.++ potentialSameCulture V.++ potentialProfessional V.++ potentialCulture V.++ potentialFriendsFriend
 
-			(!random, gen') = randomVector_ (timeStep*2) gen
+			(!random, gen') = randomVector_ (timeStep'*2) gen
 
 			scale :: Vector Double -> Int -> Vector Int
 			scale v max = V.map (floor.(* int2Float max).double2Float) v
 
-			potentialRandom = V.map (id . (alivePeople !)) $ scale (V.slice 0 timeStep random) (V.length alivePeople-1)
+			potentialRandom = V.map (id . (alivePeople !)) $ scale (V.slice 0 timeStep' random) (V.length alivePeople-1)
 			potentialSameProfessional = V.map (prof !) $ scale random (V.length prof-1)
 			potentialSameCulture = V.map (cult !) $ scale random (V.length cult-1)
 
@@ -141,7 +141,7 @@ createRelations generator friendss people alivePeople professionals professional
 							offset' = offset + profs ! i
 							p = professionals .! i
 			
-			profs = V.map (floor . (* (int2Float $ timeStep*2))) $ normalize $ professionalRelations .! professionToInt (profession person)
+			profs = V.map (floor . (* (int2Float $ timeStep'*2))) $ normalize $ professionalRelations .! professionToInt (profession person)
 
 			potentialCulture :: Vector ID
 			potentialCulture = assert (V.sum cults <= V.length random) $ f 0 V.empty 0
@@ -157,7 +157,7 @@ createRelations generator friendss people alivePeople professionals professional
 							offset' = offset + cults ! i
 							p = culturals .! i
 
-			cults = V.map (floor.(* (int2Float $ timeStep*2))) $ normalize $ culturalRelations .! cultureToInt (culture person)
+			cults = V.map (floor.(* (int2Float $ timeStep'*2))) $ normalize $ culturalRelations .! cultureToInt (culture person)
 
 			normalize v = V.map (/ V.sum v) v
 
@@ -175,11 +175,13 @@ createRelations generator friendss people alivePeople professionals professional
 				where
 				start = id $ V.head people
 
-				r1 = V.slice 0 timeStep random
-				r2 = V.slice timeStep timeStep random
+				r1 = V.slice 0 timeStep' random
+				r2 = V.slice timeStep' timeStep' random
 
 				friends :: Vector ID
 				friends = friendss .! personIndex
+
+			timeStep' = timeStep opt
 
 
 -- Take a sample of x size from each group

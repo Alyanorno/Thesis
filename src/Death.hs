@@ -11,16 +11,16 @@ import System.Random.Mersenne.Pure64 as R
 import Stuff
 import Definitions
 
-death :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-death gen (people, friends, childrens) = (V.zipWith testIfDead people' randomNumbers, friends', childrens')
+death :: Options -> Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+death opt gen (people, friends, childrens) = (V.zipWith testIfDead people' $ randomNumbers gen, friends', childrens')
 	where
 		friends' = VB.take (V.length people') friends
 		childrens' = VB.take (V.length people') childrens
 
-		randomNumbers = V.fromList $ map double2Float $ take (V.length people') $ f $ pureMT $ fromIntegral $ fromXorshift gen
+		randomNumbers = V.fromList . map double2Float . take (V.length people') . f . pureMT . fromIntegral . fromXorshift
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 
-		people' = V.filter ((<80).age) $ V.map (\a -> a {age = age a + fromIntegral timeStep}) people
+		people' = V.filter ((<80).age) $ V.map (\a -> a {age = age a + fromIntegral (timeStep opt)}) people
 		testIfDead :: Person -> Float -> Person
 		testIfDead p r
 			| a < 20 = if r < 0.992414 .^ timeStep' then p else p {dead = 1} 
@@ -33,5 +33,5 @@ death gen (people, friends, childrens) = (V.zipWith testIfDead people' randomNum
 			| otherwise = p {dead = 1}
 			where a = age p; (.^) = (**)
 		timeStep' :: Float
-		timeStep' = fromIntegral timeStep
+		timeStep' = fromIntegral $ timeStep opt
 

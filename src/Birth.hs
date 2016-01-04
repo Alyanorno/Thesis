@@ -15,13 +15,13 @@ import Definitions
 
 
 
-birth :: Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-birth gen (people, friends,_) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty)
+birth :: Options -> Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
+birth opt gen (people, friends, _) = (people V.++ add, friends VB.++ VB.replicate (V.length add) V.empty, VB.empty)
 	where
-		add = V.fromList $ concat babies
+		add = V.fromList . concat . babies $ ids
 
-		babies :: [[Person]]
-		babies = filter (not.null) $ zipWith f babyMakers $ splitPlaces numberOfBabies ids
+		babies :: [Int] -> [[Person]]
+		babies = filter (not.null) . zipWith f babyMakers . splitPlaces numberOfBabies
 			where
 			f :: Person -> [Int] -> [Person]
 			f mother ids'
@@ -35,7 +35,7 @@ birth gen (people, friends,_) = (people V.++ add, friends VB.++ VB.replicate (V.
 			conditions = ((==female).gender) .&&. ((/=0).lover) .&&. ((<45).age) .&&. alive
 
 		numberOfBabies :: [Int]
-		numberOfBabies = take (length babyMakers) (randomRs (0, timeStep `div` 2) gen :: [Int])
+		numberOfBabies = take (length babyMakers) (randomRs (0, (timeStep opt) `div` 2) gen :: [Int])
 
 		ids = [start..start + sum numberOfBabies]
 		start = fromID $ ((+1).id.V.last) people
