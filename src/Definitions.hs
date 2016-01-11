@@ -134,6 +134,8 @@ data Options = Options {
 	mapRange :: Int32,
 	timeStep :: Int,
 	peopleFromStart :: Int,
+	moveRange :: Int32,
+	startPosition :: (Int32, Int32),
 	scaleDistanceFromCenter :: Float -> Float,
 	scaleDistanceFromCulturalCenter :: Float -> Float,
 	scaleConcentrationOfPeople :: Float -> Float,

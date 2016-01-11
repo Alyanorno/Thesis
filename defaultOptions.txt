@@ -4,6 +4,10 @@ timeStep = 4 -- If 1 they will never reproduce :P (birth divides by two and roun
 
 peopleFromStart = 50
 
+moveRange = 3
+
+startPosition = 25 25
+
 scaleDistanceFromCenter = 100 -1 -- 0 -0.1 -- 0 0.001
 
 scaleDistanceFromCulturalCenter = -0.1
@@ -12,7 +16,7 @@ scaleConcentrationOfPeople = -50000 1.2
 
 scaleCulturalMap = 1
 
-staticTerrainMap = terrainMap.txt
+staticTerrainMap = valuesTerrain.txt
 
 staticProfessionalRelations = [[1 1 0 0] [1 1 0 0] [0 0 1 1] [0 0 1 1]]
 -- farmer administrator beggar none otherwise

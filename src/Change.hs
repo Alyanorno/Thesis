@@ -87,7 +87,7 @@ change opt gen (people, friends, childrens) = let (p, f) = relations alivePeople
 		maps = VB.map perCulture allCulturesVector
 			where
 				perCulture :: Int -> Vector Float
-				perCulture culture = concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture) .+. (staticTerrainMap opt)
+				perCulture culture = V.zipWith (\a b -> if a == impossiblePos then impossiblePos else a+b) (staticTerrainMap opt) $ concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture)
 					where (.+.) = V.zipWith (+)
 
 				distanceFromCulturalCenter :: VB.Vector (Vector Float)
@@ -155,14 +155,15 @@ getAHome opt center maps person parrentPosition gen
 	| otherwise = person
 	where
 	theHome
-		| parrentPosition == (0,0) = person {position = (range `div` 2, range `div` 2)}
+		| parrentPosition == (0,0) = person {position = startPosition opt}
 		| null possibleHomes = person {position = parrentPosition}
 		| otherwise = person {position = home}
 		where home = L.maximumBy (compare `on` valueAt) [possibleHomes !! i | i <- take 10 $ randomRs (0, length possibleHomes-1) gen]
 	map = maps .! cultureToInt (culture person)
-	possibleHomes = filter ((/= infinity) . valueAt) [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
-	range' = 3
-	valueAt p@(x,y) = map ! (x+y*range) + (professionValue opt) (profession person) * (scaleDistanceFromCenter opt) (distanceTo center (toFloat p))
+	possibleHomes = filter ((/= impossiblePos) . valueAt) [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
+	range' = moveRange opt
+	valueAt p@(x,y) = if posValue == impossiblePos then impossiblePos else posValue + (professionValue opt) (profession person) * (scaleDistanceFromCenter opt) (distanceTo center (toFloat p))
+		where posValue = map ! (x+y*range)
 	range = mapRange opt
 
 

@@ -72,8 +72,8 @@ rescale maxX maxY a = floor (fromIntegral a * ((fromIntegral maxY :: Float) / (f
 rescale_ maxX maxY a = fromIntegral a * maxY / fromIntegral maxX
 
 
-start :: Int32 -> Int -> People
-start mapRange a = let off = a * 3 in V.fromList $ replicate (fromIntegral off) (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0)) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) (mapRange `div` 2, mapRange `div` 2) | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
+start :: Int32 -> (Int32, Int32) -> Int -> People
+start mapRange startPosition a = let off = a * 3 in V.fromList $ replicate (fromIntegral off) (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0)) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) startPosition | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
 	where
 		f :: Int -> Int -> Int
 		f i max
@@ -89,8 +89,8 @@ distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
 toFloat :: (Integral i) => (i,i) -> (Float,Float)
 toFloat (x,y) = (fromIntegral x, fromIntegral y)
 
-infinity :: Float
-infinity = 1 / 0
+impossiblePos :: Float
+impossiblePos = 100000
 
 boxFilter :: Vector Float -> Vector Float
 boxFilter list = V.imap (\i a -> let f = access a in (a + f (i-1) + f (i+1) + f (i - mapRange) + f (i + mapRange) / 5)) list

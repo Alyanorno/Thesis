@@ -49,7 +49,7 @@ main = do
 	args <- liftM parse getArgs :: IO [OptionsType]
 	let f (OptionsFile _) = True; f _ = False
 	(options, terrainMap) <- liftM (parseOptions.lines) $ readFile $ maybe "defaultOptions.txt" (\(OptionsFile a) -> a) $ find f args
-	options <- liftM (\lines -> options {staticTerrainMap = V.fromList . map (\a -> case a of 1 -> -10000; 2 -> infinity; _ -> a) . readAll $ lines}) . readFile $ terrainMap
+	options <- liftM (\lines -> options {staticTerrainMap = V.fromList . map (\a -> case a of 1 -> -10000; 2 -> impossiblePos; _ -> a) . readAll $ lines}) . readFile $ terrainMap
 
 	mapM_ (doStuff options) args
 
@@ -66,9 +66,11 @@ parseOptions = foldr f start.map (span (/='=')).filter (not.null .&&. (/="\n") .
 		"mapRange" -> (opt {mapRange = read r'}, terrainMap)
 		"timeStep" -> (opt {timeStep = read r'}, terrainMap)
 		"peopleFromStart" -> (opt {peopleFromStart = read r'}, terrainMap)
+		"moveRange" -> (opt {moveRange = read r'}, terrainMap)
+		"startPosition" -> (opt {startPosition = (\[a,b] -> (a,b)) $ readAll r'}, terrainMap)
 		"scaleDistanceFromCenter" -> (opt {scaleDistanceFromCenter = (\a -> (r''!!0) - a * (r''!!1))}, terrainMap)
 		"scaleDistanceFromCulturalCenter" -> (opt {scaleDistanceFromCulturalCenter = (*) (read r')}, terrainMap)
-		"scaleConcentrationOfPeople" -> (opt {scaleConcentrationOfPeople = (\a -> if a < (r''!!0) then infinity else negate a ** (r''!!1))}, terrainMap)
+		"scaleConcentrationOfPeople" -> (opt {scaleConcentrationOfPeople = (\a -> let t = negate a ** (r''!!1) in if t < (r''!!0) then (r''!!0) {-impossiblePos-} else t )}, terrainMap)
 		"scaleCulturalMap" -> (opt {scaleCulturalMap = (*) (read r')}, terrainMap)
 		"staticTerrainMap" -> (opt, strip r')
 		"staticProfessionalRelations" -> (opt {staticProfessionalRelations = VB.fromList $ map (V.fromList) $ chunksOf (round $ sqrt $ fromIntegral $ length r'') r''}, terrainMap)
@@ -79,7 +81,7 @@ parseOptions = foldr f start.map (span (/='=')).filter (not.null .&&. (/="\n") .
 		r' = head $ split "--" $ tail r
 		r'' = readAll r'
 
-	start = (Options 0 0 0 id' id' id' id' V.empty VB.empty (\a -> 0 :: Float) (mkStdGen 0), "")
+	start = (Options 0 0 0 0 (0,0) id' id' id' id' V.empty VB.empty (\a -> 0 :: Float) (mkStdGen 0), "")
 	id' = (\a -> a) :: Float -> Float
 
 readAll :: (Num a, Read a) => String -> [a]
@@ -145,6 +147,7 @@ doStuff opt (Heatmap name i t st) = renderDiagram name $ populationMapToDiagram 
 	g' = V.filter alive g
 	name = "map" ++ (toUpper (head st) : tail st) ++ ".svg"
 	range = fromIntegral $ mapRange opt
+doStuff _ (OptionsFile _) = return ()
 doStuff _ Help = do
 	putStrLn "Thesis Work - Rickard Fridvall"
 	putStrLn ""
@@ -321,7 +324,7 @@ calculateDistanceGraph graph = VB.generate (VB.length graph) (\i -> V.generate (
 
 createGeneration :: Options -> Int -> (People, Friends, Childrens)
 createGeneration opt n = generations opt (seed opt) 0 n (p, VB.replicate (V.length p) V.empty, VB.replicate (V.length p) V.empty)
-	where p = start (mapRange opt) (peopleFromStart opt)
+	where p = start (mapRange opt) (startPosition opt) (peopleFromStart opt)
 
 generations :: Options -> StdGen -> Int -> Int -> (People, Friends, Childrens) -> (People, Friends, Childrens)
 generations opt seed i n previous
