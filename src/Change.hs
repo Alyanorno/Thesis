@@ -55,13 +55,13 @@ change opt gen (people, friends, childrens) = let (p, f) = relations alivePeople
 
 				chans :: [Double]
  				chans = map float2Double [chansFarmer, chansAdministrator, chansBeggar, 0]
-				chansFarmer = demand farmer 3
+				chansFarmer = 0.3 --demand farmer 3
 					where
 						demand :: Profession -> Float -> Float
 						demand work ratio = ((fromIntegral (V.length p) / n) / ratio) / 2
 							where n = fromIntegral $ V.length $ V.filter ((==work).profession) p
-				chansAdministrator = f (V.length p)
-					where f x = 1.001 ^^ negate (x + 1000) + 0.1
+				chansAdministrator = 0.4 -- f (V.length p)
+					where f x = 1.001 ^^ negate (x + 1000) + 0.1 -- 0.1
 				chansBeggar = 1
 
 		home :: People -> People -> People
@@ -81,40 +81,46 @@ change opt gen (people, friends, childrens) = let (p, f) = relations alivePeople
 					where size = V.length . V.filter ((==20).age) $ p
 
 				center :: (Float, Float)
-				center = let l = V.filter (/=(0,0)) $ V.map position alivePeople in (\(x,y)->(fromIntegral x / int2Float (V.length l), fromIntegral y / int2Float (V.length l))) $ V.foldr (\(x,y)(x',y')->(x+x',y+y')) (0,0) l
+				center = {-toFloat (startPosition opt)-} let l = V.filter (/=(0,0)) $ V.map position alivePeople in (\(x,y)->(fromIntegral x / int2Float (V.length l), fromIntegral y / int2Float (V.length l))) $ V.foldr (\(x,y)(x',y')->(x+x',y+y')) (0,0) l
 
-		maps :: VB.Vector (Vector Float)
-		maps = VB.map perCulture allCulturesVector
+		maps :: Int -> Int -> Vector Float
+		maps profession' culture' = V.zipWith (\a b -> if a == impossiblePos then impossiblePos else a+b) (staticTerrainMap opt) $ concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture') .+. (culturalMap .! culture') .+. (professionalMap .! profession')
 			where
-				perCulture :: Int -> Vector Float
-				perCulture culture = V.zipWith (\a b -> if a == impossiblePos then impossiblePos else a+b) (staticTerrainMap opt) $ concentrationOfPeopleMap .+. (distanceFromCulturalCenter .! culture) .+. (culturalMap .! culture)
-					where (.+.) = V.zipWith (+)
+			(.+.) = V.zipWith (+)
 
-				distanceFromCulturalCenter :: VB.Vector (Vector Float)
-				distanceFromCulturalCenter = VB.map (V.map $ scaleDistanceFromCulturalCenter opt) $
-					VB.map (\i -> let
-						peoplePos = V.map (position . (people &!)) $ cultureBuckets .! i
-						average :: (Int32,Int32) -> (Float,Float); average (x,y) = let l = V.length peoplePos in if l == 0 then (0,0) else (fromIntegral x / int2Float (V.length peoplePos), fromIntegral y / int2Float (V.length peoplePos))
-						culturalCenter = average $ V.foldr (\(x,y) (x',y') -> (x+x',y+y')) (0,0) peoplePos
-						in V.map (distanceTo culturalCenter . toFloat) positionMap) allCulturesVector
+			distanceFromCulturalCenter :: VB.Vector (Vector Float)
+			distanceFromCulturalCenter = VB.map (V.map $ scaleDistanceFromCulturalCenter opt) $
+				VB.map (\i -> let
+					peoplePos = V.map (position . (people &!)) $ cultureBuckets .! i
+					average :: (Int32,Int32) -> (Float,Float); average (x,y) = let l = V.length peoplePos in if l == 0 then (0,0) else (fromIntegral x / int2Float (V.length peoplePos), fromIntegral y / int2Float (V.length peoplePos))
+					culturalCenter = average $ V.foldr (\(x,y) (x',y') -> (x+x',y+y')) (0,0) peoplePos
+					in V.map (distanceTo culturalCenter . toFloat) positionMap) allCulturesVector
 
-				concentrationOfPeopleMap :: Vector Float
-				concentrationOfPeopleMap = V.generate (VB.length peopleMap) (\i -> (scaleConcentrationOfPeople opt.fromIntegral.V.length) (peopleMap .! i))
+			concentrationOfPeopleMap :: Vector Float
+			concentrationOfPeopleMap = V.generate (VB.length peopleMap) (\i -> (scaleConcentrationOfPeople opt.fromIntegral.V.length) (peopleMap .! i))
 
-				culturalMap :: VB.Vector (Vector Float)
-				culturalMap = VB.map (\i -> boxFilter $ V.generate (VB.length peopleMap) (\l -> (scaleCulturalMap opt . f i) (peopleMap .! l))) allCulturesVector
-					where 
-						f i p = let m = V.map (relationsTo i) p; l = V.length m in if l == 0 then 0 else V.sum m / int2Float l
+			culturalMap :: VB.Vector (Vector Float)
+			culturalMap = VB.map (\i -> boxFilter $ V.generate (VB.length peopleMap) (\l -> (scaleCulturalMap opt . f i) (peopleMap .! l))) allCulturesVector
+				where 
+					f i p = let m = V.map (relationsTo i) p; l = V.length m in if l == 0 then 0 else V.sum m / int2Float l
 
-						relationsTo :: Int -> ID -> Float
-						relationsTo i p = (culturalRelations .! i) ! (cultureToInt . culture . (people &!) $ p)
+					relationsTo :: Int -> ID -> Float
+					relationsTo i p = (culturalRelations .! i) ! (cultureToInt . culture . (people &!) $ p)
 
-				peopleMap :: VB.Vector (Vector ID)
-				peopleMap = VB.unsafeAccumulate V.snoc (VB.replicate (V.length positionMap) V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert alivePeople
-					where f p = (fromIntegral . (\(x,y) -> x + y * range) . position $ p, id p)
+			professionalMap :: VB.Vector (Vector Float)
+			professionalMap = VB.map (\i -> V.generate (VB.length peopleMap) (\l -> (scaleProfessionalMap opt . f i) (peopleMap .! l))) allProfessionsVector
+				where 
+				f i p = let m = V.map (relationsTo i) p; l = V.length m in if l == 0 then 0 else V.sum m / int2Float l
 
-				positionMap :: Vector (Int32, Int32)
-				positionMap = V.fromList [(x,y) | x <- [0..range-1], y <- [0..range-1]]
+				relationsTo :: Int -> ID -> Float
+				relationsTo i p = (professionalRelations .! i) ! (professionToInt . profession . (people &!) $ p)
+
+			peopleMap :: VB.Vector (Vector ID)
+			peopleMap = VB.unsafeAccumulate V.snoc (VB.replicate (V.length positionMap) V.empty) $ VB.map f $ VB.filter ((/=(0,0)).position) $ VB.convert alivePeople
+				where f p = (fromIntegral . (\(x,y) -> x + y * range) . position $ p, id p)
+
+			positionMap :: Vector (Int32, Int32)
+			positionMap = V.fromList [(x,y) | x <- [0..range-1], y <- [0..range-1]]
 
 		range = mapRange opt
 
@@ -140,16 +146,16 @@ getAJob people chans person random
 	| profession person == none = person {profession = f allProfessions random chans'}
 	| otherwise = person
 	where
-	i = professionToInt . profession . (people !) . fromID . snd . parrents $ person
+	i = professionToInt . profession . (people &!) . snd . parrents $ person
 	chans' = take i chans ++ (chans !! i) + 0.2 : drop (i+1) chans
 
 	f prof random chans
-		| head chans  >= random ! (0 :: Int) = head prof
-		| head (tail chans) >= random ! (1 :: Int) = head $ tail prof
+		| head chans'  >= random ! (0 :: Int) = head prof
+		| head (tail chans') >= random ! (1 :: Int) = head $ tail prof
 		| otherwise = head $ tail $ tail prof
 
 
-getAHome :: Options -> (Float,Float) -> VB.Vector (Vector Float) -> Person -> (Int32,Int32) -> Xorshift -> Person
+getAHome :: Options -> (Float,Float) -> (Int -> Int -> Vector Float) -> Person -> (Int32,Int32) -> Xorshift -> Person
 getAHome opt center maps person parrentPosition gen
 	| (>10) . age .&&. (/=0) . lover .&&. (==(0,0)) . position $ person = theHome
 	| otherwise = person
@@ -158,11 +164,12 @@ getAHome opt center maps person parrentPosition gen
 		| parrentPosition == (0,0) = person {position = startPosition opt}
 		| null possibleHomes = person {position = parrentPosition}
 		| otherwise = person {position = home}
-		where home = L.maximumBy (compare `on` valueAt) [possibleHomes !! i | i <- take 10 $ randomRs (0, length possibleHomes-1) gen]
-	map = maps .! cultureToInt (culture person)
+		where home = L.maximumBy (compare `on` valueAt) [possibleHomes !! i | i <- take (positionSampling opt) $ randomRs (0, length possibleHomes-1) gen]
+--		where home = L.maximumBy (compare `on` valueAt) possibleHomes
+	map = maps (professionToInt (profession person)) (cultureToInt (culture person))
 	possibleHomes = filter ((/= impossiblePos) . valueAt) [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
 	range' = moveRange opt
-	valueAt p@(x,y) = if posValue == impossiblePos then impossiblePos else posValue + (professionValue opt) (profession person) * (scaleDistanceFromCenter opt) (distanceTo center (toFloat p))
+	valueAt p@(x,y) = if posValue == impossiblePos then impossiblePos else posValue + 10 * (professionValue opt) (profession person) * (scaleDistanceFromCenter opt) (distanceTo center (toFloat p))
 		where posValue = map ! (x+y*range)
 	range = mapRange opt
 

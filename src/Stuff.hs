@@ -84,13 +84,13 @@ start mapRange startPosition a = let off = a * 3 in V.fromList $ replicate (from
 		infinitly x = cycle $ concat $ zipWith (\a b -> [a, b]) x x
 
 distanceTo :: (Float,Float) -> (Float,Float) -> Float
-distanceTo (x,y) (x',y') = (x-x')^2 + (y-y')^2
+distanceTo (x,y) (x',y') = sqrt $ (x-x')^2 + (y-y')^2
 
 toFloat :: (Integral i) => (i,i) -> (Float,Float)
 toFloat (x,y) = (fromIntegral x, fromIntegral y)
 
 impossiblePos :: Float
-impossiblePos = 100000
+impossiblePos = 1000000
 
 boxFilter :: Vector Float -> Vector Float
 boxFilter list = V.imap (\i a -> let f = access a in (a + f (i-1) + f (i+1) + f (i - mapRange) + f (i + mapRange) / 5)) list
