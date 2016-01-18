@@ -13,7 +13,6 @@ import qualified Data.Vector.Storable as V
 import qualified Data.Vector.Storable.Mutable as M
 
 import Data.Int
-import System.Random
 import System.Random.Mersenne.Pure64 as R
 import Control.Monad.ST
 
@@ -72,8 +71,8 @@ rescale maxX maxY a = floor (fromIntegral a * ((fromIntegral maxY :: Float) / (f
 rescale_ maxX maxY a = fromIntegral a * maxY / fromIntegral maxX
 
 
-start :: Int32 -> (Int32, Int32) -> Int -> People
-start mapRange startPosition a = let off = a * 3 in V.fromList $ replicate (fromIntegral off) (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0)) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) startPosition | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
+start :: (Int32, Int32) -> Int -> People
+start startPosition a = let off = a * 3 in V.fromList $ replicate (fromIntegral off) (Person 1 male farmer endorphi 70 1 0 (0,0) (0,0)) ++ [Person 0 g prof cult age (toID i) (if i >= a then 0 else 1) (if i >= a then (toID (1+i-a), toID (1+i-a)) else (ID 0,ID 0)) startPosition | (i,(g,(prof,cult))) <- zip [off+1..off+1+a*2] $ zip (cycle [male, female]) $ zip (infinitly allProfessions) (infinitly allCultures), let age = fromIntegral $ f (i-off) a]
 	where
 		f :: Int -> Int -> Int
 		f i max

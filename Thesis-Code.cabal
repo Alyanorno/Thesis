@@ -13,7 +13,7 @@ cabal-version:       >=1.10
 executable main
   main-is: main.hs
 
-  other-modules: Birth, Change, Death, Definitions, Relations, Stuff
+  other-modules: Birth, Change, Death, Definitions, Relations, Stuff, Renderings
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:    

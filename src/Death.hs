@@ -11,12 +11,10 @@ import System.Random.Mersenne.Pure64 as R
 import Stuff
 import Definitions
 
-death :: Options -> Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-death opt gen (people, friends, childrens) = (V.zipWith testIfDead people' $ randomNumbers gen, friends', childrens')
+death :: Options -> Xorshift -> (People, Friends) -> (People, Friends)
+death opt gen (people, friends) = (V.zipWith testIfDead people' $ randomNumbers gen, friends')
 	where
 		friends' = VB.take (V.length people') friends
-		childrens' = VB.take (V.length people') childrens
-
 		randomNumbers = V.fromList . map double2Float . take (V.length people') . f . pureMT . fromIntegral . fromXorshift
 			where f g = let (v,g') = R.randomDouble g in v : f g'
 

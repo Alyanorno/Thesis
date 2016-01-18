@@ -28,8 +28,8 @@ import Relations
 
 
 
-change :: Options -> Xorshift -> (People, Friends, Childrens) -> (People, Friends, Childrens)
-change opt gen (people, friends, childrens) = let (p, f) = relations alivePeople friends . home alivePeople . job alivePeople $ people in (p, f, childrens)
+change :: Options -> Xorshift -> (People, Friends) -> (People, Friends)
+change opt gen (people, friends) = relations alivePeople friends . home alivePeople . job alivePeople $ people
 	where
 		alivePeople = V.filter alive people
 
@@ -169,7 +169,7 @@ getAHome opt center maps person parrentPosition gen
 	map = maps (professionToInt (profession person)) (cultureToInt (culture person))
 	possibleHomes = filter ((/= impossiblePos) . valueAt) [(x,y) | let (x',y') = parrentPosition, x <- [x'-range'..x'+range'], y <- [y'-range'..y'+range'], x < range, x > 0, y < range, y > 0]
 	range' = moveRange opt
-	valueAt p@(x,y) = if posValue == impossiblePos then impossiblePos else posValue + 10 * (professionValue opt) (profession person) * (scaleDistanceFromCenter opt) (distanceTo center (toFloat p))
+	valueAt p@(x,y) = if posValue == impossiblePos then impossiblePos else posValue + 10 * professionValue opt (profession person) * scaleDistanceFromCenter opt (distanceTo center (toFloat p))
 		where posValue = map ! (x+y*range)
 	range = mapRange opt
 
