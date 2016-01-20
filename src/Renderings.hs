@@ -1,6 +1,7 @@
 {-# LANGUAGE PartialTypeSignatures, FlexibleContexts, TypeFamilies #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
+{-# OPTIONS_GHC -fno-ignore-asserts #-}
 
 module Renderings (
 	renderDiagram,
@@ -8,7 +9,8 @@ module Renderings (
 	renderHeatmap,
 	renderPopulationMap,
 	renderCultureMap,
-	renderProfessionMap)
+	renderProfessionMap,
+	renderMegaMap)
 where
 
 import Prelude hiding (id)
@@ -41,15 +43,41 @@ import System.Environment
 import System.Random hiding (split)
 import System.IO
 
+import Debug.Trace as T
+
 import Stuff
 import Definitions
 
 
+
 biggestPopulation = 50 :: Double
 
--- TODO: Unfinished
-megaDiagram :: Double -> _ -> _ -> _ -> Diagram B
-megaDiagram range popMap cultMap profMap = undefined
+renderMegaMap :: Options -> People -> Diagram B
+renderMegaMap opt people = gridCat . map sq $ zip3 popMap cultMap profMap
+	where
+	popMap = populationMap (fromIntegral $ mapRange opt) people
+	cultMap = map f $ cultureMap opt people
+		where f c
+			| sum c == 0 = 0
+			| b == 0 = 1
+			| b == 1 = 2
+			| b == 2 = 3
+			| otherwise = 0
+			where b = snd $ L.maximumBy (comparing fst) $ zip c [0 :: Int ..]
+
+	profMap = professionMap opt people
+
+	sq :: (Int, Int, Float) -> Diagram B
+	sq (s, cult, prof) = shape (max (fromIntegral s) 0.0001) # fc (blend mix red black) # lwG 0
+		where
+		shape :: Double -> Diagram B
+		shape s = case cult of
+			0 -> square s
+			1 -> triangle s
+			2 -> square s
+			3 -> circle (s/2)
+
+		mix = (float2Double $ prof / (L.maximum $ map (professionValue opt) allProfessions))
 
 
 populationMap range = VB.toList . VB.map V.length . peopleMap (range*range)
@@ -59,7 +87,7 @@ renderPopulationMap opt people = hsep bp [(populationSquares # center) `atop` sq
 
 	populationSquares = gridCat . map f $ populationMap (fromIntegral range) people
 		where
-		f = (((sq bp) # phantom) `atop`) . sq . min bp . fromIntegral
+		f = ((sq bp # phantom) `atop`) . sq . min bp . fromIntegral
 
 	example = vsep bp [sq bp ||| f (show $ floor bp), sq (bp * (3/4)), sq (bp / 2), sq (bp / 4), hsep bp [sq 1, f "1"]]
 		where f s = scale bp $ text s <> rect 3 1 # lw n
@@ -71,7 +99,7 @@ renderPopulationMap opt people = hsep bp [(populationSquares # center) `atop` sq
 	bp = biggestPopulation
 
 
-cultureMap opt people = concat [[[f p c | c <- allCultures] | x <- [0..range], let p = V.filter ((\(x',y') -> x == x' && y == y').position) $ V.filter alive people] | y <- [0..range]]
+cultureMap opt people = concat [[[f p c | c <- allCultures] | x <- [0..range-1], let p = V.filter ((\(x',y') -> x == x' && y == y').position) $ V.filter alive people] | y <- [0..range-1]]
 	where
 	range = fromIntegral $ mapRange opt
 	f p c
@@ -91,7 +119,7 @@ renderCultureMap opt people = gridCat . map (sq . setColour) $ cultureMap opt pe
 	sq (s, c) = square s # fc c # lwG 0
 
 
-professionMap opt people = concat [[f p | x <- [0..range], let p = V.filter ((\(x',y') -> x == x' && y == y').position) $ V.filter alive people] | y <- [0..range]]
+professionMap opt people = concat [[f p | x <- [0..range-1], let p = V.filter ((\(x',y') -> x == x' && y == y').position) $ V.filter alive people] | y <- [0..range-1]]
 	where
 	range = fromIntegral $ mapRange opt
 	f :: People -> Float; f l

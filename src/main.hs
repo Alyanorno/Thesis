@@ -69,7 +69,7 @@ parseOptions = foldr (f . span (/= '=')) start . filter (not.null .&&. (/="\n") 
 		"startPosition" -> (opt {startPosition = (\[a,b] -> (a,b)) $ readAll r'}, terrainMap)
 		"scaleDistanceFromCenter" -> (opt {scaleDistanceFromCenter = \a -> 100 * read r' - a * read r'}, terrainMap)
 		"scaleDistanceFromCulturalCenter" -> (opt {scaleDistanceFromCulturalCenter = (*) (read r')}, terrainMap)
-		"scaleConcentrationOfPeople" -> (opt {scaleConcentrationOfPeople = \a -> let t = negate a ** (r''!!1) in if t < (r''!!0) then r''!!0 {-impossiblePos-} else t}, terrainMap)
+		"scaleConcentrationOfPeople" -> (opt {scaleConcentrationOfPeople = \a -> (\[r1,r2] -> let t = negate a ** r2 in if t < r1 then r1 {-impossiblePos-} else t) r''}, terrainMap)
 		"scaleCulturalMap" -> (opt {scaleCulturalMap = (*) (read r')}, terrainMap)
 		"scaleProfessionalMap" -> (opt {scaleProfessionalMap = (*) (read r')}, terrainMap)
 		"staticTerrainMap" -> (opt, strip r')
@@ -136,6 +136,8 @@ doStuff :: Options -> OptionsType -> IO ()
 doStuff opt (Pop a b) = writeDiagramMap opt a b "populationMap" renderPopulationMap
 doStuff opt (Cult a b) = writeDiagramMap opt a b "cultureMap" renderCultureMap
 doStuff opt (Prof a b) = writeDiagramMap opt a b "professionMap" renderProfessionMap
+doStuff opt (Mega a b) = writeDiagramMap opt a b "megaMap" renderMegaMap
+doStuff opt (Iter a) = (print $ V.length $ fst $ createGeneration opt a) >> return ()
 doStuff opt (Perf outType outFile iter) = withArgs [outType, outFile] . defaultMain . map (\a -> bench (show a) $ nf (createGeneration opt) a) $ iter
 doStuff opt (Connections i t st) = renderConnections t st opt g friendss
 	where
@@ -158,19 +160,21 @@ doStuff _ Help = do
 	putStrLn "    path"
 doStuff _ (Flag _) = return ()
 
+parse [] = []
 parse (a:ls)
-	| a == "pop" = Pop (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
-	| a == "cult" = Cult (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
-	| a == "prof" = Prof (read (ls!!0)) (read (ls!!1)) : parse (drop 2 ls)
-	| a == "perf" = [Perf ("--" ++ (ls!!0)) ("--" ++ (ls!!1)) (map read (drop 2 ls))]
-	| a == "connections" = Connections (read (ls!!0)) (ls!!1) (ls!!2) : parse (drop 3 ls)
-	| a == "map"  = Heatmap (read (ls!!0)) (ls!!1) (ls!!2) : parse (drop 4 ls)
-	| a == "optionsFile" = OptionsFile (ls!!0) : parse (drop 1 ls)
+	| a == "pop" = (\(a1:a2:ls) -> Pop (read a1) (read a2) : parse ls) ls
+	| a == "cult" = (\(a1:a2:ls) -> Cult (read a1) (read a2) : parse ls) ls
+	| a == "prof" = (\(a1:a2:ls) -> Prof (read a1) (read a2) : parse ls) ls
+	| a == "mega"  = (\(a1:a2:ls) -> Mega (read a1) (read a2) : parse ls) ls
+	| a == "iterations" = (\(a1:ls) -> Iter (read a1) : parse ls) ls
+	| a == "perf" = (\(a1:a2:ls) -> [Perf ("--" ++ a1) a2 (map read ls)]) ls
+	| a == "connections" = (\(a1:a2:a3:ls) -> Connections (read a1) a2 a3 : parse ls) ls
+	| a == "map"  = (\(a1:a2:a3:ls) -> Heatmap (read a1) a2 a3 : parse ls) ls
+	| a == "optionsFile" = (\(a1:ls) -> OptionsFile a1 : parse ls) ls
 	| a == "help" = [Help]
 	| otherwise = Flag a : parse ls
-parse [] = []
 
-data OptionsType = Pop Int Int | Cult Int Int | Prof Int Int | Perf String String [Int] | Connections Int String String | Heatmap Int String String | OptionsFile String | Help | Flag String deriving (Eq)
+data OptionsType = Pop Int Int | Cult Int Int | Prof Int Int | Mega Int Int | Iter Int | Perf String String [Int] | Connections Int String String | Heatmap Int String String | OptionsFile String | Help | Flag String deriving (Eq)
 
 
 writeDiagramMap opt n1 n2 name fun = let range = [n1..n2] in mapM_ (\(index, name') -> do
