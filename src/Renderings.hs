@@ -55,7 +55,7 @@ biggestPopulation = 50 :: Double
 renderMegaMap :: Options -> People -> Diagram B
 renderMegaMap opt people = gridCat . map sq $ zip3 popMap cultMap profMap
 	where
-	popMap = populationMap (fromIntegral $ mapRange opt) people
+	popMap = map (min (biggestPopulation-0.0001) . fromIntegral) $ populationMap (fromIntegral $ mapRange opt) people
 	cultMap = map f $ cultureMap opt people
 		where f c
 			| sum c == 0 = 0
@@ -67,8 +67,8 @@ renderMegaMap opt people = gridCat . map sq $ zip3 popMap cultMap profMap
 
 	profMap = professionMap opt people
 
-	sq :: (Int, Int, Float) -> Diagram B
-	sq (s, cult, prof) = shape (max (fromIntegral s) 0.0001) # fc (blend mix red black) # lwG 0
+	sq :: (Double, Int, Float) -> Diagram B
+	sq (s, cult, prof) = ((square biggestPopulation :: Diagram B) # phantom) `atop` (shape (max s 0.0001) # fc (blend mix red black) # lwG 0)
 		where
 		shape :: Double -> Diagram B
 		shape s = case cult of

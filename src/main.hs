@@ -44,9 +44,14 @@ import Renderings
 main :: IO ()
 main = do
 	args <- liftM parse getArgs :: IO [OptionsType]
+
 	let f (OptionsFile _) = True; f _ = False
-	(options, terrainMap) <- maybe (return $ parseOptions []) (\(OptionsFile a) -> liftM (parseOptions.lines) $ readFile a) $ find f args
-	options <- liftM (\lines -> options {staticTerrainMap = V.fromList . map (\a -> case a of 1 -> 10000; 2 -> impossiblePos; _ -> a) . readAll $ lines}) . readFile $ terrainMap
+	let readOptions (OptionsFile a) = liftM (parseOptions.lines) $ readFile a
+	(options, terrainMap) <- maybe (return $ parseOptions []) readOptions $ find f args
+
+	let convertTerrainValues = V.fromList . map (\a -> case a of 1 -> 10000; 2 -> impossiblePos; _ -> a)
+	let parseOptionsFile lines = options {staticTerrainMap = convertTerrainValues . readAll $ lines}
+	options <- liftM parseOptionsFile . readFile $ terrainMap
 
 	mapM_ (doStuff options) args
 
@@ -61,25 +66,43 @@ parseOptions = foldr (f . span (/= '=')) start . filter (not.null .&&. (/="\n") 
 	where
 	f :: (String, String) -> (Options, String) -> (Options, String)
 	f (l,r) (opt, terrainMap) = case strip l of
-		"mapRange" -> (opt {mapRange = read r'}, terrainMap)
-		"timeStep" -> (opt {timeStep = read r'}, terrainMap)
-		"peopleFromStart" -> (opt {peopleFromStart = read r'}, terrainMap)
-		"moveRange" -> (opt {moveRange = read r'}, terrainMap)
-		"positionSampling" -> (opt {positionSampling = read r'}, terrainMap)
-		"startPosition" -> (opt {startPosition = (\[a,b] -> (a,b)) $ readAll r'}, terrainMap)
-		"scaleDistanceFromCenter" -> (opt {scaleDistanceFromCenter = \a -> 100 * read r' - a * read r'}, terrainMap)
-		"scaleDistanceFromCulturalCenter" -> (opt {scaleDistanceFromCulturalCenter = (*) (read r')}, terrainMap)
-		"scaleConcentrationOfPeople" -> (opt {scaleConcentrationOfPeople = \a -> (\[r1,r2] -> let t = negate a ** r2 in if t < r1 then r1 {-impossiblePos-} else t) r''}, terrainMap)
-		"scaleCulturalMap" -> (opt {scaleCulturalMap = (*) (read r')}, terrainMap)
-		"scaleProfessionalMap" -> (opt {scaleProfessionalMap = (*) (read r')}, terrainMap)
-		"staticTerrainMap" -> (opt, strip r')
-		"staticProfessionalRelations" -> (opt {staticProfessionalRelations = VB.fromList $ map V.fromList $ chunksOf (round $ sqrt $ fromIntegral $ length r'') r''}, terrainMap)
-		"professionValue" -> (opt {professionValue = (r'' !!).professionToInt}, terrainMap)
-		"seed" -> (opt {seed = mkStdGen $ read r'}, terrainMap)
+		"mapRange" ->
+			(opt {mapRange = read r'}, terrainMap)
+		"timeStep" ->
+			(opt {timeStep = read r'}, terrainMap)
+		"peopleFromStart" ->
+			(opt {peopleFromStart = read r'}, terrainMap)
+		"moveRange" ->
+			(opt {moveRange = read r'}, terrainMap)
+		"positionSampling" ->
+			(opt {positionSampling = read r'}, terrainMap)
+		"startPosition" ->
+			(opt {startPosition = (\[a,b] -> (a,b)) $ readAll r'}, terrainMap)
+		"scaleDistanceFromCenter" ->
+			(opt {scaleDistanceFromCenter = \a -> 100 * read r' - a * read r'}, terrainMap)
+		"scaleDistanceFromCulturalCenter" ->
+			(opt {scaleDistanceFromCulturalCenter = (*) (read r')}, terrainMap)
+		"scaleConcentrationOfPeople" ->
+			(opt {scaleConcentrationOfPeople = \a -> (\[r1,r2] -> max (0 - a ** r2) r1) r''}, terrainMap)
+		"scaleCulturalMap" ->
+			(opt {scaleCulturalMap = (*) (read r')}, terrainMap)
+		"scaleProfessionalMap" ->
+			(opt {scaleProfessionalMap = (*) (read r')}, terrainMap)
+		"staticTerrainMap" ->
+			(opt, strip r')
+		"staticProfessionalRelations" ->
+			(opt {staticProfessionalRelations = readProf r''}, terrainMap)
+		"professionValue" ->
+			(opt {professionValue = (r'' !!).professionToInt}, terrainMap)
+		"seed" ->
+			(opt {seed = mkStdGen $ read r'}, terrainMap)
 		_ -> error $ "Unknown option: " ++ strip l
 		where
 		r' = head $ split "--" $ tail r
 		r'' = readAll r'
+
+		readProf a = VB.fromList . map V.fromList . chunksOf (round . sqrt . fromIntegral $ length a) $ a
+
 
 	start = (Options
 		(50 :: Int32)
@@ -115,10 +138,11 @@ defaultDoStuff opt flags = do
 	putStrLn $ "Alive: " ++ (show . toProcent2 . V.length $ g') ++ "% "
 	putStrLn $ "Lover: " ++ (show . toProcent . V.length . V.filter ((/=0) . lover .&&. (<41) . age) $ g') ++ "%"
 	putStr "Cult:  "
-	VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allCulturesVector (cultureToInt . culture) g'
+	let printLengthInPercent = VB.mapM_ putStr . VB.map ((++"% ") . show . toProcent . V.length)
+	printLengthInPercent $ toBuckets allCulturesVector (cultureToInt . culture) g'
 	putStrLn ""
 	putStr "Prof:  "
-	VB.mapM_ putStr $ VB.map ((++"% ") . show . toProcent . V.length) $ toBuckets allProfessionsVector (professionToInt . profession) g'
+	printLengthInPercent $ toBuckets allProfessionsVector (professionToInt . profession) g'
 	putStrLn ""
 
 	let fromIDtoGraph = VB.map (V.filter (>=0) . V.map (fromID.(+(-(id $ V.head g)))))
@@ -138,7 +162,8 @@ doStuff opt (Cult a b) = writeDiagramMap opt a b "cultureMap" renderCultureMap
 doStuff opt (Prof a b) = writeDiagramMap opt a b "professionMap" renderProfessionMap
 doStuff opt (Mega a b) = writeDiagramMap opt a b "megaMap" renderMegaMap
 doStuff opt (Iter a) = (print $ V.length $ fst $ createGeneration opt a) >> return ()
-doStuff opt (Perf outType outFile iter) = withArgs [outType, outFile] . defaultMain . map (\a -> bench (show a) $ nf (createGeneration opt) a) $ iter
+doStuff opt (Perf outType outFile iter) = out . map (\a -> bench (show a) $ nf (createGeneration opt) a) $ iter
+	where out = withArgs [outType, outFile] . defaultMain
 doStuff opt (Connections i t st) = renderConnections t st opt g friendss
 	where
 	(g, friendss) = createGeneration opt i
@@ -174,7 +199,18 @@ parse (a:ls)
 	| a == "help" = [Help]
 	| otherwise = Flag a : parse ls
 
-data OptionsType = Pop Int Int | Cult Int Int | Prof Int Int | Mega Int Int | Iter Int | Perf String String [Int] | Connections Int String String | Heatmap Int String String | OptionsFile String | Help | Flag String deriving (Eq)
+data OptionsType =
+	Pop Int Int |
+	Cult Int Int |
+	Prof Int Int |
+	Mega Int Int |
+	Iter Int |
+	Perf String String [Int] |
+	Connections Int String String |
+	Heatmap Int String String |
+	OptionsFile String |
+	Help |
+	Flag String deriving (Eq)
 
 
 writeDiagramMap opt n1 n2 name fun = let range = [n1..n2] in mapM_ (\(index, name') -> do
@@ -183,8 +219,10 @@ writeDiagramMap opt n1 n2 name fun = let range = [n1..n2] in mapM_ (\(index, nam
 	$ zip range $ map (\i -> "data/" ++ name ++ show i ++ ".svg") range
 
 calculateDistanceGraph :: VB.Vector (Vector Int) -> VB.Vector (Vector Int)
-calculateDistanceGraph graph = VB.generate (VB.length graph) (\i -> V.generate (V.length (graph .! i)) (\l -> pathLength 0 l i))
+calculateDistanceGraph graph = VB.generate (VB.length graph) f
 	where
+	f i = V.generate (V.length (graph .! i)) (\l -> pathLength 0 l i)
+
 	pathLength :: Int -> Int -> Int -> Int
 	pathLength depth goal current
 		| depth == 4 || found = depth

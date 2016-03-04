@@ -16,6 +16,7 @@ import Foreign.Storable.Tuple ()
 import System.IO.Unsafe
 import System.Random hiding (random, next)
 import System.Random.Mersenne.Pure64 as R
+import GHC.Conc.Sync (numCapabilities)
 import Control.Exception (assert)
 --import Control.Concurrent.MVar
 import Control.Monad
@@ -31,7 +32,6 @@ import Definitions
 createRelations :: Options -> Xorshift -> Friends -> People -> People -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> VB.Vector (Vector ID) -> VB.Vector (Vector Float) -> (People, Friends)
 createRelations opt generator friendss people alivePeople professionals professionalRelations culturals culturalRelations = unsafePerformIO $ do
 	let s = V.length people
---	If fixed the result will not change depending on number of threads
 	let offset = 12 --numCapabilities
 	let randomGenerators = map (pureMT.fromIntegral) $ iterate (fromXorshift.step.Xorshift) (fromXorshift generator)
 	let genWithRanges = zip randomGenerators $ let t = [0, s `div` offset..s-offset] ++ [s] in zip t (tail t)
